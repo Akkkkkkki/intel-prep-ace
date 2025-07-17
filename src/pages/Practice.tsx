@@ -1,11 +1,12 @@
 import { useState, useEffect } from "react";
-import { useNavigate } from "react-router-dom";
+import { useNavigate, useSearchParams } from "react-router-dom";
 import Navigation from "@/components/Navigation";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Progress } from "@/components/ui/progress";
 import { Textarea } from "@/components/ui/textarea";
+import { Alert, AlertDescription } from "@/components/ui/alert";
 import { 
   ChevronLeft, 
   ChevronRight, 
@@ -14,70 +15,119 @@ import {
   MicOff, 
   Timer,
   CheckCircle,
-  SkipForward
+  SkipForward,
+  AlertCircle,
+  Loader2
 } from "lucide-react";
+import { searchService } from "@/services/searchService";
+import { useAuth } from "@/hooks/useAuth";
 
 interface Question {
   id: string;
-  stage: string;
+  stage_id: string;
+  stage_name: string;
   question: string;
   answered: boolean;
 }
 
+interface PracticeSession {
+  id: string;
+  search_id: string;
+  user_id: string;
+  started_at: string;
+  completed_at: string | null;
+}
+
 const Practice = () => {
   const navigate = useNavigate();
+  const { user } = useAuth();
+  const [searchParams] = useSearchParams();
+  const searchId = searchParams.get('searchId');
+  const stageIds = searchParams.get('stages')?.split(',') || [];
+  
   const [questions, setQuestions] = useState<Question[]>([]);
   const [currentIndex, setCurrentIndex] = useState(0);
   const [answer, setAnswer] = useState("");
   const [isRecording, setIsRecording] = useState(false);
   const [timeElapsed, setTimeElapsed] = useState(0);
   const [isTimerRunning, setIsTimerRunning] = useState(false);
+  const [isLoading, setIsLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
+  const [practiceSession, setPracticeSession] = useState<PracticeSession | null>(null);
+  const [savedAnswers, setSavedAnswers] = useState<Map<string, boolean>>(new Map());
 
-  // Mock questions data
+  // Load practice session and questions
   useEffect(() => {
-    const mockQuestions: Question[] = [
-      {
-        id: "1",
-        stage: "Phone Screening",
-        question: "Why do you want to work at Google?",
-        answered: false
-      },
-      {
-        id: "2", 
-        stage: "Phone Screening",
-        question: "Tell me about yourself",
-        answered: false
-      },
-      {
-        id: "3",
-        stage: "Technical Phone Screen", 
-        question: "Implement a function to reverse a linked list",
-        answered: false
-      },
-      {
-        id: "4",
-        stage: "Technical Phone Screen",
-        question: "Find the intersection of two arrays",
-        answered: false
-      },
-      {
-        id: "5",
-        stage: "Virtual Onsite - Coding",
-        question: "Design a URL shortener service",
-        answered: false
-      },
-      {
-        id: "6",
-        stage: "Behavioral Interview",
-        question: "Describe a time you had to work with a difficult team member",
-        answered: false
+    const initializePractice = async () => {
+      if (!searchId || !user) {
+        setError("Missing search ID or user authentication");
+        setIsLoading(false);
+        return;
       }
-    ];
-    
-    // Shuffle questions
-    const shuffled = [...mockQuestions].sort(() => Math.random() - 0.5);
-    setQuestions(shuffled);
-  }, []);
+
+      if (stageIds.length === 0) {
+        setError("No stages selected for practice");
+        setIsLoading(false);
+        return;
+      }
+
+      try {
+        // 1. Load search results to get questions
+        const searchResult = await searchService.getSearchResults(searchId);
+        
+        if (!searchResult.success || !searchResult.stages) {
+          setError("Failed to load interview questions");
+          setIsLoading(false);
+          return;
+        }
+
+        // 2. Filter questions by selected stages
+        const selectedStages = searchResult.stages.filter(stage => 
+          stageIds.includes(stage.id)
+        );
+
+        const allQuestions: Question[] = [];
+        selectedStages.forEach(stage => {
+          stage.questions?.forEach(questionObj => {
+            allQuestions.push({
+              id: questionObj.id,
+              stage_id: stage.id,
+              stage_name: stage.name,
+              question: questionObj.question,
+              answered: false
+            });
+          });
+        });
+
+        if (allQuestions.length === 0) {
+          setError("No questions found for selected stages");
+          setIsLoading(false);
+          return;
+        }
+
+        // 3. Shuffle questions for varied practice
+        const shuffledQuestions = [...allQuestions].sort(() => Math.random() - 0.5);
+        setQuestions(shuffledQuestions);
+
+        // 4. Create practice session
+        const sessionResult = await searchService.createPracticeSession(searchId);
+        
+        if (sessionResult.success && sessionResult.session) {
+          setPracticeSession(sessionResult.session);
+        } else {
+          console.warn("Failed to create practice session, continuing without session tracking");
+        }
+
+        setIsLoading(false);
+      } catch (err) {
+        console.error("Error initializing practice:", err);
+        setError("Failed to initialize practice session");
+        setIsLoading(false);
+      }
+    };
+
+    initializePractice();
+  }, [searchId, user, stageIds]);
 
   // Timer effect
   useEffect(() => {
@@ -100,9 +150,9 @@ const Practice = () => {
   const progress = questions.length > 0 ? ((currentIndex + 1) / questions.length) * 100 : 0;
   const answeredCount = questions.filter(q => q.answered).length;
 
-  const nextQuestion = () => {
+  const nextQuestion = async () => {
     if (currentIndex < questions.length - 1) {
-      markAsAnswered();
+      await markAsAnswered();
       setCurrentIndex(prev => prev + 1);
       setAnswer("");
       resetTimer();
@@ -117,12 +167,35 @@ const Practice = () => {
     }
   };
 
-  const markAsAnswered = () => {
+  const markAsAnswered = async () => {
+    if (!practiceSession || !currentQuestion) return;
+
+    // Mark as answered locally first
     setQuestions(prev => 
       prev.map((q, index) => 
         index === currentIndex ? { ...q, answered: true } : q
       )
     );
+
+    // Save answer to backend if there's content
+    if (answer.trim() || isRecording) {
+      try {
+        const result = await searchService.savePracticeAnswer({
+          sessionId: practiceSession.id,
+          questionId: currentQuestion.id,
+          textAnswer: answer.trim() || undefined,
+          answerTime: timeElapsed
+        });
+
+        if (result.success) {
+          setSavedAnswers(prev => new Map(prev).set(currentQuestion.id, true));
+        } else {
+          console.error("Failed to save answer:", result.error);
+        }
+      } catch (err) {
+        console.error("Error saving answer:", err);
+      }
+    }
   };
 
   const skipQuestion = () => {
@@ -156,18 +229,69 @@ const Practice = () => {
     }
   };
 
+  if (isLoading) {
+    return (
+      <div className="min-h-screen bg-background flex items-center justify-center">
+        <Card className="w-full max-w-md text-center">
+          <CardHeader>
+            <Loader2 className="h-8 w-8 animate-spin mx-auto mb-4" />
+            <CardTitle>Loading Practice Session</CardTitle>
+          </CardHeader>
+          <CardContent>
+            <p className="text-muted-foreground">
+              Setting up your personalized interview practice...
+            </p>
+          </CardContent>
+        </Card>
+      </div>
+    );
+  }
+
+  if (error) {
+    return (
+      <div className="min-h-screen bg-background flex items-center justify-center">
+        <Card className="w-full max-w-md text-center">
+          <CardHeader>
+            <AlertCircle className="h-8 w-8 text-destructive mx-auto mb-4" />
+            <CardTitle>Practice Session Error</CardTitle>
+          </CardHeader>
+          <CardContent>
+            <Alert variant="destructive" className="mb-4">
+              <AlertDescription>{error}</AlertDescription>
+            </Alert>
+            <div className="space-y-2">
+              <Button 
+                onClick={() => navigate(`/dashboard${searchId ? `?searchId=${searchId}` : ''}`)}
+                className="w-full"
+              >
+                Back to Dashboard
+              </Button>
+              <Button 
+                variant="outline" 
+                onClick={() => navigate('/')}
+                className="w-full"
+              >
+                Start New Search
+              </Button>
+            </div>
+          </CardContent>
+        </Card>
+      </div>
+    );
+  }
+
   if (!currentQuestion) {
     return (
       <div className="min-h-screen bg-background flex items-center justify-center">
         <Card className="w-full max-w-md text-center">
           <CardHeader>
-            <CardTitle>No Questions Selected</CardTitle>
+            <CardTitle>No Questions Available</CardTitle>
           </CardHeader>
           <CardContent>
             <p className="text-muted-foreground mb-4">
-              Please go back to the dashboard and select some questions to practice.
+              No questions found for the selected stages. Please go back and select different stages.
             </p>
-            <Button onClick={() => navigate("/dashboard")}>
+            <Button onClick={() => navigate(`/dashboard${searchId ? `?searchId=${searchId}` : ''}`)}>
               Back to Dashboard
             </Button>
           </CardContent>
@@ -182,7 +306,7 @@ const Practice = () => {
       <div className="container mx-auto px-4 py-8">
         {/* Header */}
         <div className="flex items-center justify-between mb-6">
-          <Button variant="outline" onClick={() => navigate("/dashboard")}>
+          <Button variant="outline" onClick={() => navigate(`/dashboard${searchId ? `?searchId=${searchId}` : ''}`)}>
             <ChevronLeft className="h-4 w-4 mr-2" />
             Back to Dashboard
           </Button>
@@ -207,10 +331,17 @@ const Practice = () => {
         <Card className="max-w-4xl mx-auto">
           <CardHeader>
             <div className="flex items-center justify-between">
-              <Badge variant="secondary">{currentQuestion.stage}</Badge>
-              {currentQuestion.answered && (
-                <CheckCircle className="h-5 w-5 text-success" />
-              )}
+              <Badge variant="secondary">{currentQuestion.stage_name}</Badge>
+              <div className="flex items-center gap-2">
+                {savedAnswers.get(currentQuestion.id) && (
+                  <Badge variant="outline" className="text-xs text-green-600">
+                    Saved
+                  </Badge>
+                )}
+                {currentQuestion.answered && (
+                  <CheckCircle className="h-5 w-5 text-green-600" />
+                )}
+              </div>
             </div>
             <CardTitle className="text-xl leading-relaxed">
               {currentQuestion.question}

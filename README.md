@@ -25,13 +25,16 @@ A modern, AI-powered interview preparation tool that helps small circles of frie
 - Flash-card style question review
 - Filter questions by interview stage
 - Built-in timer for practice sessions
-- Voice/text recording capabilities (coming soon)
+- Answer tracking and session persistence
+- Voice/text recording capabilities (Phase 3)
 
 ### 📱 **Modern Experience**
 - Responsive design for desktop and mobile
 - Clean, minimalist interface with fresh green theme
-- Fast, real-time updates during research
+- Real-time status updates during AI research
+- Complete search history and session management
 - Secure authentication and data protection
+- Full CV management with intelligent parsing
 
 ## 🚀 Quick Start
 
@@ -124,21 +127,24 @@ src/
 ### Database Setup
 
 The project uses Supabase with the following main tables:
-- `profiles` - User profile information
-- `searches` - Research queries and results
-- `interview_stages` - Structured interview process stages
-- `interview_questions` - Questions for each stage
-- `resumes` - Uploaded CV content and metadata
-- `practice_sessions` - User practice tracking
+- `profiles` - User profile information with auto-creation triggers
+- `searches` - Research queries with status tracking (pending/processing/completed/failed)
+- `interview_stages` - Structured interview process stages with ordering
+- `interview_questions` - Questions for each stage with relationships
+- `resumes` - CV content storage with intelligent parsing metadata
+- `practice_sessions` - User practice tracking with answer persistence
+- `practice_answers` - Individual answer records with timing data
 
-All tables include Row Level Security (RLS) policies for data protection.
+All tables include comprehensive Row Level Security (RLS) policies for data protection and user isolation.
 
 ### AI Integration
 
 The app uses OpenAI's API through Supabase Edge Functions:
 - **Model:** GPT-4.1-2025-04-14 for high-quality research
 - **Endpoint:** `/functions/v1/interview-research`
-- **Security:** API keys stored in Supabase secrets
+- **Features:** Intelligent question parsing, fallback logic, CV-based personalization
+- **Security:** API keys stored in Supabase secrets with CORS handling
+- **Error Handling:** Comprehensive error recovery and status tracking
 
 ## 🎯 Usage Examples
 
@@ -162,10 +168,12 @@ CV: [Upload your resume for personalized insights]
 ```
 
 ### Practice Session
-1. Navigate to Practice page after research
-2. Select specific interview stages to focus on
-3. Use flash-card mode to review questions
-4. Time your responses for realistic practice
+1. Complete a company research first
+2. Select specific interview stages from Dashboard
+3. Navigate to Practice mode with selected questions
+4. Use flash-card interface to review questions
+5. Time your responses and save answers
+6. Track progress across multiple sessions
 
 ## 🔒 Security & Privacy
 

@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { Link, useLocation, useNavigate } from "react-router-dom";
 import { useAuthContext } from "@/components/AuthProvider";
 import { Button } from "@/components/ui/button";
@@ -12,18 +12,33 @@ import {
   Play, 
   User, 
   History,
-  LogOut
+  LogOut,
+  Loader2,
+  AlertCircle
 } from "lucide-react";
+import { searchService } from "@/services/searchService";
 
 interface NavigationProps {
   showHistory?: boolean;
 }
 
+interface SearchHistoryItem {
+  id: string;
+  company: string;
+  role: string | null;
+  country: string | null;
+  search_status: string;
+  created_at: string;
+}
+
 const Navigation = ({ showHistory = false }: NavigationProps) => {
   const location = useLocation();
   const navigate = useNavigate();
-  const { signOut } = useAuthContext();
+  const { signOut, user } = useAuthContext();
   const [isHistoryOpen, setIsHistoryOpen] = useState(false);
+  const [searchHistory, setSearchHistory] = useState<SearchHistoryItem[]>([]);
+  const [isLoadingHistory, setIsLoadingHistory] = useState(false);
+  const [historyError, setHistoryError] = useState<string | null>(null);
 
   const navigationItems = [
     { path: "/", label: "Home", icon: Home },
@@ -32,15 +47,64 @@ const Navigation = ({ showHistory = false }: NavigationProps) => {
     { path: "/profile", label: "Profile", icon: User },
   ];
 
-  const mockHistory = [
-    { id: 1, company: "Google", role: "Software Engineer", date: "2024-01-15" },
-    { id: 2, company: "Microsoft", role: "Senior Developer", date: "2024-01-10" },
-    { id: 3, company: "Stripe", role: "Full Stack Engineer", date: "2024-01-05" },
-  ];
+  // Load search history when showHistory is true and user is authenticated
+  useEffect(() => {
+    const loadSearchHistory = async () => {
+      if (!showHistory || !user) return;
+
+      setIsLoadingHistory(true);
+      setHistoryError(null);
+
+      try {
+        const result = await searchService.getSearchHistory();
+        
+        if (result.success && result.searches) {
+          setSearchHistory(result.searches);
+        } else {
+          setHistoryError("Failed to load search history");
+        }
+      } catch (err) {
+        console.error("Error loading search history:", err);
+        setHistoryError("Failed to load search history");
+      } finally {
+        setIsLoadingHistory(false);
+      }
+    };
+
+    loadSearchHistory();
+  }, [showHistory, user]);
 
   const handleSignOut = async () => {
     await signOut();
     navigate("/auth");
+  };
+
+  const handleHistoryItemClick = (searchItem: SearchHistoryItem) => {
+    navigate(`/dashboard?searchId=${searchItem.id}`);
+    setIsHistoryOpen(false);
+  };
+
+  const formatDate = (dateString: string) => {
+    return new Date(dateString).toLocaleDateString('en-US', {
+      month: 'short',
+      day: 'numeric',
+      year: 'numeric'
+    });
+  };
+
+  const getStatusBadge = (status: string) => {
+    switch (status) {
+      case 'completed':
+        return <Badge variant="secondary" className="text-xs text-green-600 bg-green-100">Completed</Badge>;
+      case 'processing':
+        return <Badge variant="secondary" className="text-xs text-blue-600 bg-blue-100">Processing</Badge>;
+      case 'pending':
+        return <Badge variant="secondary" className="text-xs text-yellow-600 bg-yellow-100">Pending</Badge>;
+      case 'failed':
+        return <Badge variant="secondary" className="text-xs text-red-600 bg-red-100">Failed</Badge>;
+      default:
+        return null;
+    }
   };
 
   const isActive = (path: string) => location.pathname === path;
@@ -87,22 +151,46 @@ const Navigation = ({ showHistory = false }: NavigationProps) => {
                   <SheetContent side="left" className="w-80">
                     <div className="py-6">
                       <h2 className="text-lg font-semibold mb-4">Search History</h2>
-                      <div className="space-y-3">
-                        {mockHistory.map((item) => (
-                          <div
-                            key={item.id}
-                            className="p-3 border rounded-lg cursor-pointer hover:bg-muted transition-colors"
-                            onClick={() => {
-                              navigate("/dashboard");
-                              setIsHistoryOpen(false);
-                            }}
-                          >
-                            <div className="font-medium">{item.company}</div>
-                            <div className="text-sm text-muted-foreground">{item.role}</div>
-                            <div className="text-xs text-muted-foreground mt-1">{item.date}</div>
-                          </div>
-                        ))}
-                      </div>
+                      
+                      {isLoadingHistory ? (
+                        <div className="flex items-center justify-center py-8">
+                          <Loader2 className="h-6 w-6 animate-spin" />
+                          <span className="ml-2 text-sm text-muted-foreground">Loading history...</span>
+                        </div>
+                      ) : historyError ? (
+                        <div className="flex items-center gap-2 p-3 border border-red-200 rounded-lg bg-red-50">
+                          <AlertCircle className="h-4 w-4 text-red-600" />
+                          <span className="text-sm text-red-800">{historyError}</span>
+                        </div>
+                      ) : searchHistory.length === 0 ? (
+                        <div className="text-center py-8">
+                          <History className="h-8 w-8 mx-auto mb-2 opacity-50" />
+                          <p className="text-sm text-muted-foreground">No search history yet</p>
+                          <p className="text-xs text-muted-foreground">Start a new search to see it here</p>
+                        </div>
+                      ) : (
+                        <div className="space-y-3">
+                          {searchHistory.map((item) => (
+                            <div
+                              key={item.id}
+                              className="p-3 border rounded-lg cursor-pointer hover:bg-muted transition-colors"
+                              onClick={() => handleHistoryItemClick(item)}
+                            >
+                              <div className="flex items-start justify-between mb-2">
+                                <div className="font-medium truncate">{item.company}</div>
+                                {getStatusBadge(item.search_status)}
+                              </div>
+                              {item.role && (
+                                <div className="text-sm text-muted-foreground mb-1">{item.role}</div>
+                              )}
+                              {item.country && (
+                                <div className="text-xs text-muted-foreground mb-1">{item.country}</div>
+                              )}
+                              <div className="text-xs text-muted-foreground">{formatDate(item.created_at)}</div>
+                            </div>
+                          ))}
+                        </div>
+                      )}
                     </div>
                   </SheetContent>
                 </Sheet>
@@ -148,18 +236,34 @@ const Navigation = ({ showHistory = false }: NavigationProps) => {
                   {showHistory && (
                     <div className="mt-6">
                       <h3 className="font-medium mb-3">Recent Searches</h3>
-                      <div className="space-y-2">
-                        {mockHistory.slice(0, 3).map((item) => (
-                          <div
-                            key={item.id}
-                            className="p-2 border rounded cursor-pointer hover:bg-muted text-sm"
-                            onClick={() => navigate("/dashboard")}
-                          >
-                            <div className="font-medium">{item.company}</div>
-                            <div className="text-xs text-muted-foreground">{item.role}</div>
-                          </div>
-                        ))}
-                      </div>
+                      {isLoadingHistory ? (
+                        <div className="flex items-center justify-center py-4">
+                          <Loader2 className="h-4 w-4 animate-spin mr-2" />
+                          <span className="text-xs text-muted-foreground">Loading...</span>
+                        </div>
+                      ) : searchHistory.length === 0 ? (
+                        <div className="text-center py-4">
+                          <p className="text-xs text-muted-foreground">No searches yet</p>
+                        </div>
+                      ) : (
+                        <div className="space-y-2">
+                          {searchHistory.slice(0, 3).map((item) => (
+                            <div
+                              key={item.id}
+                              className="p-2 border rounded cursor-pointer hover:bg-muted text-sm"
+                              onClick={() => handleHistoryItemClick(item)}
+                            >
+                              <div className="flex items-center justify-between">
+                                <div className="font-medium truncate">{item.company}</div>
+                                {getStatusBadge(item.search_status)}
+                              </div>
+                              {item.role && (
+                                <div className="text-xs text-muted-foreground">{item.role}</div>
+                              )}
+                            </div>
+                          ))}
+                        </div>
+                      )}
                     </div>
                   )}
 

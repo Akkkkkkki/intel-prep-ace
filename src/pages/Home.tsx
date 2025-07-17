@@ -5,10 +5,14 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Textarea } from "@/components/ui/textarea";
-import { Upload, Search, FileText } from "lucide-react";
+import { Upload, Search, FileText, AlertCircle } from "lucide-react";
+import { Alert, AlertDescription } from "@/components/ui/alert";
+import { searchService } from "@/services/searchService";
+import { useAuth } from "@/hooks/useAuth";
 
 const Home = () => {
   const navigate = useNavigate();
+  const { user } = useAuth();
   const [formData, setFormData] = useState({
     company: "",
     role: "",
@@ -17,19 +21,41 @@ const Home = () => {
     roleLinks: ""
   });
   const [isLoading, setIsLoading] = useState(false);
+  const [error, setError] = useState<string | null>(null);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!formData.company.trim()) return;
     
+    if (!user) {
+      setError("Please sign in to continue");
+      return;
+    }
+    
     setIsLoading(true);
-    // TODO: Implement LLM workflow
+    setError(null);
     
-    // Simulate API call
-    await new Promise(resolve => setTimeout(resolve, 2000));
-    
-    setIsLoading(false);
-    navigate("/dashboard");
+    try {
+      const result = await searchService.createSearch({
+        company: formData.company.trim(),
+        role: formData.role.trim() || undefined,
+        country: formData.country.trim() || undefined,
+        roleLinks: formData.roleLinks.trim() || undefined,
+        cv: formData.cv.trim() || undefined
+      });
+
+      if (result.success && result.searchId) {
+        // Navigate to dashboard with search ID
+        navigate(`/dashboard?searchId=${result.searchId}`);
+      } else {
+        setError(result.error?.message || "Failed to create search. Please try again.");
+      }
+    } catch (err) {
+      console.error("Error submitting search:", err);
+      setError("An unexpected error occurred. Please try again.");
+    } finally {
+      setIsLoading(false);
+    }
   };
 
   const handleFileUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -63,6 +89,12 @@ const Home = () => {
             </CardDescription>
           </CardHeader>
           <CardContent>
+            {error && (
+              <Alert variant="destructive" className="mb-6">
+                <AlertCircle className="h-4 w-4" />
+                <AlertDescription>{error}</AlertDescription>
+              </Alert>
+            )}
             <form onSubmit={handleSubmit} className="space-y-6">
               <div className="space-y-2">
                 <Label htmlFor="company">Company *</Label>
