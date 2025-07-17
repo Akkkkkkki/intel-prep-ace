@@ -9,6 +9,7 @@ import { Upload, Search, FileText, AlertCircle } from "lucide-react";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { searchService } from "@/services/searchService";
 import { useAuth } from "@/hooks/useAuth";
+import Navigation from "@/components/Navigation";
 
 const Home = () => {
   const navigate = useNavigate();
@@ -68,6 +69,9 @@ const Home = () => {
 
   return (
     <div className="min-h-screen bg-background">
+      {/* Always show Navigation for logged-in users */}
+      {user && <Navigation />}
+      
       <div className="container mx-auto px-4 py-16">
         <div className="max-w-2xl mx-auto text-center mb-12">
           <h1 className="text-5xl font-bold tracking-tight mb-4">
@@ -76,6 +80,18 @@ const Home = () => {
           <p className="text-xl text-muted-foreground mb-8">
             Get insider intel on any company's interview process. Tailored prep for you and your friends.
           </p>
+          
+          {/* Simple login/signup buttons for non-logged-in users */}
+          {!user && (
+            <div className="flex gap-4 justify-center mb-8">
+              <Button onClick={() => navigate("/auth")}>
+                Sign Up
+              </Button>
+              <Button variant="outline" onClick={() => navigate("/auth")}>
+                Sign In
+              </Button>
+            </div>
+          )}
         </div>
 
         <Card className="max-w-2xl mx-auto shadow-lg">

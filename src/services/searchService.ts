@@ -11,10 +11,18 @@ interface CreateSearchParams {
 export const searchService = {
   async createSearch({ company, role, country, roleLinks, cv }: CreateSearchParams) {
     try {
-      // 1. Create a search record
+      // Get the current user first
+      const { data: { user }, error: userError } = await supabase.auth.getUser();
+      
+      if (userError || !user) {
+        throw new Error("No authenticated user");
+      }
+
+      // 1. Create a search record with user_id
       const { data: searchData, error: searchError } = await supabase
         .from("searches")
         .insert({
+          user_id: user.id,
           company,
           role,
           country,
@@ -27,9 +35,7 @@ export const searchService = {
       if (searchError) throw searchError;
 
       const searchId = searchData.id;
-      const userId = supabase.auth.getUser().then(({ data }) => data.user?.id);
-
-      if (!userId) throw new Error("No authenticated user");
+      const userId = user.id;
 
       // 2. Call the edge function to process the search
       const processResponse = await supabase.functions.invoke("interview-research", {
@@ -39,7 +45,7 @@ export const searchService = {
           country,
           roleLinks: roleLinks ? roleLinks.split("\n").filter(link => link.trim()) : [],
           cv,
-          userId: await userId,
+          userId: userId,
           searchId,
         }
       });

@@ -21,10 +21,10 @@ import {
   Loader2
 } from "lucide-react";
 import { searchService } from "@/services/searchService";
-import { useAuth } from "@/hooks/useAuth";
+import { useAuthContext } from "@/components/AuthProvider";
 
 const Profile = () => {
-  const { user } = useAuth();
+  const { user } = useAuthContext();
   const [cvText, setCvText] = useState("");
   const [isLoading, setIsLoading] = useState(true);
   const [isSaving, setIsSaving] = useState(false);
@@ -56,7 +56,16 @@ const Profile = () => {
         if (result.success && result.resume) {
           setCvText(result.resume.content);
           if (result.resume.parsed_data) {
-            setParsedData(result.resume.parsed_data);
+            setParsedData(result.resume.parsed_data as {
+              name?: string;
+              email?: string;
+              location?: string;
+              experience?: string;
+              currentRole?: string;
+              skills?: string[];
+              education?: string;
+              lastUpdated?: string;
+            });
           }
         }
         // If no resume found, that's OK - user can create one
@@ -195,12 +204,7 @@ const Profile = () => {
       <Navigation />
       <div className="container mx-auto px-4 py-8">
         <div className="max-w-4xl mx-auto">
-          <div className="mb-8">
-            <h1 className="text-3xl font-bold mb-2">Profile & CV</h1>
-            <p className="text-muted-foreground">
-              Manage your CV and profile information for personalized interview preparation.
-            </p>
-          </div>
+
 
           {/* Status Messages */}
           {error && (

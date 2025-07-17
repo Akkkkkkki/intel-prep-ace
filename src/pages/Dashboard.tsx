@@ -17,7 +17,9 @@ import {
   ArrowRight,
   Brain,
   AlertCircle,
-  RefreshCw
+  RefreshCw,
+  Search,
+  History
 } from "lucide-react";
 import { searchService } from "@/services/searchService";
 
@@ -55,7 +57,7 @@ const Dashboard = () => {
   const [searchParams] = useSearchParams();
   const searchId = searchParams.get('searchId');
   
-  const [isLoading, setIsLoading] = useState(true);
+  const [isLoading, setIsLoading] = useState(false);
   const [progress, setProgress] = useState(0);
   const [stages, setStages] = useState<InterviewStage[]>([]);
   const [searchData, setSearchData] = useState<SearchData | null>(null);
@@ -64,12 +66,9 @@ const Dashboard = () => {
 
   // Load search data and poll for updates
   const loadSearchData = async () => {
-    if (!searchId) {
-      setError("No search ID provided");
-      setIsLoading(false);
-      return;
-    }
+    if (!searchId) return;
 
+    setIsLoading(true);
     try {
       const result = await searchService.getSearchResults(searchId);
       
@@ -108,7 +107,7 @@ const Dashboard = () => {
 
   useEffect(() => {
     if (!searchId) {
-      setError("No search ID provided. Please start a new search.");
+      // No search ID provided - show default dashboard state
       setIsLoading(false);
       return;
     }
@@ -168,38 +167,86 @@ const Dashboard = () => {
     }
   };
 
+  // Show default empty state when no search ID is provided
+  if (!searchId) {
+    return (
+      <div className="min-h-screen bg-background">
+        <Navigation showHistory={false} />
+        <div className="container mx-auto px-4 py-8">
+
+          <div className="max-w-2xl mx-auto text-center">
+            <Card className="p-8">
+              <CardHeader>
+                <div className="flex items-center justify-center mb-4">
+                  <Brain className="h-12 w-12 text-primary" />
+                </div>
+                <CardTitle>No Active Search</CardTitle>
+                <CardDescription>
+                  Start a new search to get personalized interview intel for any company
+                </CardDescription>
+              </CardHeader>
+              <CardContent>
+                <div className="space-y-4">
+                  <Button 
+                    onClick={() => navigate('/')}
+                    size="lg"
+                    className="w-full"
+                  >
+                    <Search className="h-4 w-4 mr-2" />
+                    Start New Search
+                  </Button>
+                  <Button 
+                    variant="outline" 
+                    onClick={() => {/* TODO: Show history */}}
+                    className="w-full"
+                  >
+                    <History className="h-4 w-4 mr-2" />
+                    View Search History
+                  </Button>
+                </div>
+              </CardContent>
+            </Card>
+          </div>
+        </div>
+      </div>
+    );
+  }
+
   if (error) {
     return (
-      <div className="min-h-screen bg-background flex items-center justify-center">
-        <Card className="w-full max-w-md">
-          <CardHeader className="text-center">
-            <AlertCircle className="h-12 w-12 text-destructive mx-auto mb-4" />
-            <CardTitle>Error Loading Interview Intel</CardTitle>
-          </CardHeader>
-          <CardContent>
-            <Alert variant="destructive" className="mb-4">
-              <AlertDescription>{error}</AlertDescription>
-            </Alert>
-            <Button 
-              onClick={() => {
-                setError(null);
-                setIsLoading(true);
-                loadSearchData();
-              }}
-              className="w-full"
-            >
-              <RefreshCw className="h-4 w-4 mr-2" />
-              Try Again
-            </Button>
-            <Button 
-              variant="outline" 
-              onClick={() => navigate('/')}
-              className="w-full mt-2"
-            >
-              Start New Search
-            </Button>
-          </CardContent>
-        </Card>
+      <div className="min-h-screen bg-background">
+        <Navigation showHistory={false} />
+        <div className="container mx-auto px-4 py-8">
+          <Card className="w-full max-w-md mx-auto">
+            <CardHeader className="text-center">
+              <AlertCircle className="h-12 w-12 text-destructive mx-auto mb-4" />
+              <CardTitle>Error Loading Interview Intel</CardTitle>
+            </CardHeader>
+            <CardContent>
+              <Alert variant="destructive" className="mb-4">
+                <AlertDescription>{error}</AlertDescription>
+              </Alert>
+              <Button 
+                onClick={() => {
+                  setError(null);
+                  setIsLoading(true);
+                  loadSearchData();
+                }}
+                className="w-full"
+              >
+                <RefreshCw className="h-4 w-4 mr-2" />
+                Try Again
+              </Button>
+              <Button 
+                variant="outline" 
+                onClick={() => navigate('/')}
+                className="w-full mt-2"
+              >
+                Start New Search
+              </Button>
+            </CardContent>
+          </Card>
+        </div>
       </div>
     );
   }
@@ -214,33 +261,36 @@ const Dashboard = () => {
     const currentStatus = searchData?.search_status || 'pending';
     
     return (
-      <div className="min-h-screen bg-background flex items-center justify-center">
-        <Card className="w-full max-w-md">
-          <CardHeader className="text-center">
-            <Brain className="h-12 w-12 text-primary mx-auto mb-4" />
-            <CardTitle>Researching Interview Intel</CardTitle>
-            <CardDescription>
-              {searchData?.company && `for ${searchData.company}`}
-              {searchData?.role && ` - ${searchData.role}`}
-            </CardDescription>
-          </CardHeader>
-          <CardContent>
-            <Progress value={progress} className="mb-4" />
-            <p className="text-sm text-muted-foreground text-center">
-              {statusMessages[currentStatus as keyof typeof statusMessages] || statusMessages.pending}
-            </p>
-            <p className="text-xs text-muted-foreground text-center mt-2">
-              {progress}% complete
-            </p>
-          </CardContent>
-        </Card>
+      <div className="min-h-screen bg-background">
+        <Navigation showHistory={false} />
+        <div className="container mx-auto px-4 py-8">
+          <Card className="w-full max-w-md mx-auto">
+            <CardHeader className="text-center">
+              <Brain className="h-12 w-12 text-primary mx-auto mb-4" />
+              <CardTitle>Researching Interview Intel</CardTitle>
+              <CardDescription>
+                {searchData?.company && `for ${searchData.company}`}
+                {searchData?.role && ` - ${searchData.role}`}
+              </CardDescription>
+            </CardHeader>
+            <CardContent>
+              <Progress value={progress} className="mb-4" />
+              <p className="text-sm text-muted-foreground text-center">
+                {statusMessages[currentStatus as keyof typeof statusMessages] || statusMessages.pending}
+              </p>
+              <p className="text-xs text-muted-foreground text-center mt-2">
+                {progress}% complete
+              </p>
+            </CardContent>
+          </Card>
+        </div>
       </div>
     );
   }
 
   return (
     <div className="min-h-screen bg-background">
-      <Navigation showHistory={true} />
+      <Navigation showHistory={false} />
       <div className="container mx-auto px-4 py-8">
         <div className="mb-8">
           <div className="flex items-center justify-between mb-4">

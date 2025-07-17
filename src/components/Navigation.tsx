@@ -1,9 +1,10 @@
 import { useState, useEffect } from "react";
-import { Link, useLocation, useNavigate } from "react-router-dom";
+import { Link, useLocation, useNavigate, useSearchParams } from "react-router-dom";
 import { useAuthContext } from "@/components/AuthProvider";
 import { Button } from "@/components/ui/button";
 import { Sheet, SheetContent, SheetTrigger } from "@/components/ui/sheet";
 import { Badge } from "@/components/ui/badge";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { 
   Brain, 
   Menu, 
@@ -14,12 +15,14 @@ import {
   History,
   LogOut,
   Loader2,
-  AlertCircle
+  AlertCircle,
+  ChevronDown
 } from "lucide-react";
 import { searchService } from "@/services/searchService";
 
 interface NavigationProps {
   showHistory?: boolean;
+  showSearchSelector?: boolean;
 }
 
 interface SearchHistoryItem {
@@ -31,9 +34,11 @@ interface SearchHistoryItem {
   created_at: string;
 }
 
-const Navigation = ({ showHistory = false }: NavigationProps) => {
+const Navigation = ({ showHistory = false, showSearchSelector = true }: NavigationProps) => {
   const location = useLocation();
   const navigate = useNavigate();
+  const [searchParams] = useSearchParams();
+  const currentSearchId = searchParams.get('searchId');
   const { signOut, user } = useAuthContext();
   const [isHistoryOpen, setIsHistoryOpen] = useState(false);
   const [searchHistory, setSearchHistory] = useState<SearchHistoryItem[]>([]);
@@ -47,10 +52,10 @@ const Navigation = ({ showHistory = false }: NavigationProps) => {
     { path: "/profile", label: "Profile", icon: User },
   ];
 
-  // Load search history when showHistory is true and user is authenticated
+  // Load search history when component mounts and user is authenticated
   useEffect(() => {
     const loadSearchHistory = async () => {
-      if (!showHistory || !user) return;
+      if (!user) return;
 
       setIsLoadingHistory(true);
       setHistoryError(null);
@@ -72,7 +77,7 @@ const Navigation = ({ showHistory = false }: NavigationProps) => {
     };
 
     loadSearchHistory();
-  }, [showHistory, user]);
+  }, [user]);
 
   const handleSignOut = async () => {
     await signOut();
@@ -82,6 +87,15 @@ const Navigation = ({ showHistory = false }: NavigationProps) => {
   const handleHistoryItemClick = (searchItem: SearchHistoryItem) => {
     navigate(`/dashboard?searchId=${searchItem.id}`);
     setIsHistoryOpen(false);
+  };
+
+  const handleSearchSelection = (searchId: string) => {
+    const currentPath = location.pathname;
+    if (searchId === "none") {
+      navigate(currentPath);
+    } else {
+      navigate(`${currentPath}?searchId=${searchId}`);
+    }
   };
 
   const formatDate = (dateString: string) => {
@@ -109,6 +123,17 @@ const Navigation = ({ showHistory = false }: NavigationProps) => {
 
   const isActive = (path: string) => location.pathname === path;
 
+  const getCurrentSearchDisplay = () => {
+    if (!currentSearchId) return "No search selected";
+    const currentSearch = searchHistory.find(search => search.id === currentSearchId);
+    if (!currentSearch) return "Search not found";
+    return `${currentSearch.company}${currentSearch.role ? ` - ${currentSearch.role}` : ''}`;
+  };
+
+  const getNavigationPath = (path: string) => {
+    return currentSearchId ? `${path}?searchId=${currentSearchId}` : path;
+  };
+
   return (
     <>
       <nav className="border-b bg-card/50 backdrop-blur-sm sticky top-0 z-50">
@@ -125,7 +150,7 @@ const Navigation = ({ showHistory = false }: NavigationProps) => {
               {navigationItems.map((item) => (
                 <Link
                   key={item.path}
-                  to={item.path}
+                  to={getNavigationPath(item.path)}
                   className={`flex items-center gap-2 px-3 py-2 rounded-md text-sm font-medium transition-colors ${
                     isActive(item.path)
                       ? "bg-primary text-primary-foreground"
@@ -140,6 +165,28 @@ const Navigation = ({ showHistory = false }: NavigationProps) => {
 
             {/* Desktop Actions */}
             <div className="hidden md:flex items-center gap-4">
+              {/* Search Selector */}
+              {showSearchSelector && searchHistory.length > 0 && (
+                <Select value={currentSearchId || "none"} onValueChange={handleSearchSelection}>
+                  <SelectTrigger className="w-[200px]">
+                    <SelectValue placeholder="Select search">
+                      {getCurrentSearchDisplay()}
+                    </SelectValue>
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="none">No search selected</SelectItem>
+                    {searchHistory.map((search) => (
+                      <SelectItem key={search.id} value={search.id}>
+                        <div className="flex items-center justify-between w-full">
+                          <span>{search.company}{search.role ? ` - ${search.role}` : ''}</span>
+                          {getStatusBadge(search.search_status)}
+                        </div>
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              )}
+
               {showHistory && (
                 <Sheet open={isHistoryOpen} onOpenChange={setIsHistoryOpen}>
                   <SheetTrigger asChild>
@@ -220,7 +267,7 @@ const Navigation = ({ showHistory = false }: NavigationProps) => {
                     {navigationItems.map((item) => (
                       <Link
                         key={item.path}
-                        to={item.path}
+                        to={getNavigationPath(item.path)}
                         className={`flex items-center gap-3 px-3 py-2 rounded-md text-sm font-medium transition-colors w-full ${
                           isActive(item.path)
                             ? "bg-primary text-primary-foreground"
@@ -232,6 +279,28 @@ const Navigation = ({ showHistory = false }: NavigationProps) => {
                       </Link>
                     ))}
                   </div>
+
+                  {/* Mobile Search Selector */}
+                  {showSearchSelector && searchHistory.length > 0 && (
+                    <div className="mt-6">
+                      <h3 className="font-medium mb-3">Active Search</h3>
+                      <Select value={currentSearchId || "none"} onValueChange={handleSearchSelection}>
+                        <SelectTrigger className="w-full">
+                          <SelectValue placeholder="Select search">
+                            {getCurrentSearchDisplay()}
+                          </SelectValue>
+                        </SelectTrigger>
+                        <SelectContent>
+                          <SelectItem value="none">No search selected</SelectItem>
+                          {searchHistory.map((search) => (
+                            <SelectItem key={search.id} value={search.id}>
+                              {search.company}{search.role ? ` - ${search.role}` : ''}
+                            </SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
+                    </div>
+                  )}
 
                   {showHistory && (
                     <div className="mt-6">
