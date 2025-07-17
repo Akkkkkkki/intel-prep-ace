@@ -13,7 +13,8 @@ const Home = () => {
     company: "",
     role: "",
     country: "",
-    cv: ""
+    cv: "",
+    roleLinks: ""
   });
   const [isLoading, setIsLoading] = useState(false);
 
@@ -132,6 +133,21 @@ const Home = () => {
                   rows={6}
                   className="resize-none"
                 />
+              </div>
+
+              <div className="space-y-2">
+                <Label htmlFor="role-links">Role Description Links (optional)</Label>
+                <Textarea
+                  id="role-links"
+                  placeholder="Paste job description links here (one per line)..."
+                  value={formData.roleLinks}
+                  onChange={(e) => setFormData(prev => ({ ...prev, roleLinks: e.target.value }))}
+                  rows={3}
+                  className="resize-none"
+                />
+                <p className="text-xs text-muted-foreground">
+                  Add links to job descriptions to improve research accuracy
+                </p>
               </div>
 
               <Button 
