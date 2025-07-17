@@ -14,7 +14,251 @@ export type Database = {
   }
   public: {
     Tables: {
-      [_ in never]: never
+      interview_questions: {
+        Row: {
+          created_at: string
+          id: string
+          question: string
+          stage_id: string
+        }
+        Insert: {
+          created_at?: string
+          id?: string
+          question: string
+          stage_id: string
+        }
+        Update: {
+          created_at?: string
+          id?: string
+          question?: string
+          stage_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "interview_questions_stage_id_fkey"
+            columns: ["stage_id"]
+            isOneToOne: false
+            referencedRelation: "interview_stages"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      interview_stages: {
+        Row: {
+          content: string | null
+          created_at: string
+          duration: string | null
+          guidance: string | null
+          id: string
+          interviewer: string | null
+          name: string
+          order_index: number
+          search_id: string
+        }
+        Insert: {
+          content?: string | null
+          created_at?: string
+          duration?: string | null
+          guidance?: string | null
+          id?: string
+          interviewer?: string | null
+          name: string
+          order_index: number
+          search_id: string
+        }
+        Update: {
+          content?: string | null
+          created_at?: string
+          duration?: string | null
+          guidance?: string | null
+          id?: string
+          interviewer?: string | null
+          name?: string
+          order_index?: number
+          search_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "interview_stages_search_id_fkey"
+            columns: ["search_id"]
+            isOneToOne: false
+            referencedRelation: "searches"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      practice_answers: {
+        Row: {
+          answer_time_seconds: number | null
+          audio_url: string | null
+          created_at: string
+          id: string
+          question_id: string
+          session_id: string
+          text_answer: string | null
+        }
+        Insert: {
+          answer_time_seconds?: number | null
+          audio_url?: string | null
+          created_at?: string
+          id?: string
+          question_id: string
+          session_id: string
+          text_answer?: string | null
+        }
+        Update: {
+          answer_time_seconds?: number | null
+          audio_url?: string | null
+          created_at?: string
+          id?: string
+          question_id?: string
+          session_id?: string
+          text_answer?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "practice_answers_question_id_fkey"
+            columns: ["question_id"]
+            isOneToOne: false
+            referencedRelation: "interview_questions"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "practice_answers_session_id_fkey"
+            columns: ["session_id"]
+            isOneToOne: false
+            referencedRelation: "practice_sessions"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      practice_sessions: {
+        Row: {
+          completed_at: string | null
+          id: string
+          search_id: string
+          started_at: string
+          user_id: string
+        }
+        Insert: {
+          completed_at?: string | null
+          id?: string
+          search_id: string
+          started_at?: string
+          user_id: string
+        }
+        Update: {
+          completed_at?: string | null
+          id?: string
+          search_id?: string
+          started_at?: string
+          user_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "practice_sessions_search_id_fkey"
+            columns: ["search_id"]
+            isOneToOne: false
+            referencedRelation: "searches"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      profiles: {
+        Row: {
+          avatar_url: string | null
+          created_at: string
+          email: string | null
+          full_name: string | null
+          id: string
+          updated_at: string
+        }
+        Insert: {
+          avatar_url?: string | null
+          created_at?: string
+          email?: string | null
+          full_name?: string | null
+          id: string
+          updated_at?: string
+        }
+        Update: {
+          avatar_url?: string | null
+          created_at?: string
+          email?: string | null
+          full_name?: string | null
+          id?: string
+          updated_at?: string
+        }
+        Relationships: []
+      }
+      resumes: {
+        Row: {
+          content: string
+          created_at: string
+          id: string
+          parsed_data: Json | null
+          search_id: string | null
+          user_id: string
+        }
+        Insert: {
+          content: string
+          created_at?: string
+          id?: string
+          parsed_data?: Json | null
+          search_id?: string | null
+          user_id: string
+        }
+        Update: {
+          content?: string
+          created_at?: string
+          id?: string
+          parsed_data?: Json | null
+          search_id?: string | null
+          user_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "resumes_search_id_fkey"
+            columns: ["search_id"]
+            isOneToOne: false
+            referencedRelation: "searches"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      searches: {
+        Row: {
+          company: string
+          country: string | null
+          created_at: string
+          id: string
+          role: string | null
+          role_links: string | null
+          search_status: string
+          user_id: string | null
+        }
+        Insert: {
+          company: string
+          country?: string | null
+          created_at?: string
+          id?: string
+          role?: string | null
+          role_links?: string | null
+          search_status?: string
+          user_id?: string | null
+        }
+        Update: {
+          company?: string
+          country?: string | null
+          created_at?: string
+          id?: string
+          role?: string | null
+          role_links?: string | null
+          search_status?: string
+          user_id?: string | null
+        }
+        Relationships: []
+      }
     }
     Views: {
       [_ in never]: never

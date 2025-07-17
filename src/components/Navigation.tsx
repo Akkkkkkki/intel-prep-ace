@@ -1,5 +1,6 @@
 import { useState } from "react";
 import { Link, useLocation, useNavigate } from "react-router-dom";
+import { useAuthContext } from "@/components/AuthProvider";
 import { Button } from "@/components/ui/button";
 import { Sheet, SheetContent, SheetTrigger } from "@/components/ui/sheet";
 import { Badge } from "@/components/ui/badge";
@@ -21,6 +22,7 @@ interface NavigationProps {
 const Navigation = ({ showHistory = false }: NavigationProps) => {
   const location = useLocation();
   const navigate = useNavigate();
+  const { signOut } = useAuthContext();
   const [isHistoryOpen, setIsHistoryOpen] = useState(false);
 
   const navigationItems = [
@@ -36,8 +38,8 @@ const Navigation = ({ showHistory = false }: NavigationProps) => {
     { id: 3, company: "Stripe", role: "Full Stack Engineer", date: "2024-01-05" },
   ];
 
-  const handleSignOut = () => {
-    // TODO: Implement sign out
+  const handleSignOut = async () => {
+    await signOut();
     navigate("/auth");
   };
 

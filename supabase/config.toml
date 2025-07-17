@@ -1,1 +1,4 @@
 project_id = "xjjjvefsrkcszhuwtoss"
+
+[functions.interview-research]
+verify_jwt = true

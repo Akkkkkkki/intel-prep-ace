@@ -1,4 +1,6 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
+import { useNavigate, useLocation } from "react-router-dom";
+import { useAuthContext } from "@/components/AuthProvider";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -16,6 +18,18 @@ const Auth = () => {
     password: "",
     confirmPassword: ""
   });
+  
+  const navigate = useNavigate();
+  const location = useLocation();
+  const { user, signIn, signUp } = useAuthContext();
+  
+  // If user is already logged in, redirect them
+  useEffect(() => {
+    if (user) {
+      const from = (location.state as any)?.from?.pathname || "/dashboard";
+      navigate(from, { replace: true });
+    }
+  }, [user, navigate, location]);
 
   const handleSubmit = async (e: React.FormEvent, mode: 'signin' | 'signup') => {
     e.preventDefault();
@@ -35,18 +49,27 @@ const Auth = () => {
     setIsLoading(true);
     
     try {
-      // TODO: Implement Supabase auth
-      await new Promise(resolve => setTimeout(resolve, 1000));
-      
       if (mode === 'signup') {
+        const { error: signUpError } = await signUp(formData.email, formData.password);
+        
+        if (signUpError) {
+          throw signUpError;
+        }
+        
         setSuccess("Account created! Please check your email to verify your account.");
       } else {
+        const { error: signInError } = await signIn(formData.email, formData.password);
+        
+        if (signInError) {
+          throw signInError;
+        }
+        
         setSuccess("Successfully signed in!");
-        // Redirect to dashboard
-        window.location.href = "/dashboard";
+        const from = (location.state as any)?.from?.pathname || "/dashboard";
+        navigate(from, { replace: true });
       }
-    } catch (err) {
-      setError("Authentication failed. Please try again.");
+    } catch (err: any) {
+      setError(err.message || "Authentication failed. Please try again.");
     } finally {
       setIsLoading(false);
     }
