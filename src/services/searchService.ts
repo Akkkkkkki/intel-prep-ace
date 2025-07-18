@@ -191,6 +191,32 @@ export const searchService = {
     }
   },
 
+  async analyzeCV(cvText: string) {
+    try {
+      const { data: user } = await supabase.auth.getUser();
+      
+      if (!user.user) throw new Error("No authenticated user");
+      
+      const response = await supabase.functions.invoke("cv-analysis", {
+        body: {
+          cvText,
+          userId: user.user.id
+        }
+      });
+
+      if (response.error) throw new Error(response.error.message);
+
+      return {
+        success: true,
+        parsedData: response.data.parsedData,
+        aiAnalysis: response.data.aiAnalysis
+      };
+    } catch (error) {
+      console.error("Error analyzing CV:", error);
+      return { error, success: false };
+    }
+  },
+
   async saveResume({ content, parsedData }: { content: string; parsedData?: any }) {
     try {
       const { data: user } = await supabase.auth.getUser();

@@ -9,11 +9,13 @@ import { Upload, Search, FileText, AlertCircle } from "lucide-react";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { searchService } from "@/services/searchService";
 import { useAuth } from "@/hooks/useAuth";
+import { useToast } from "@/hooks/use-toast";
 import Navigation from "@/components/Navigation";
 
 const Home = () => {
   const navigate = useNavigate();
   const { user } = useAuth();
+  const { toast } = useToast();
   const [formData, setFormData] = useState({
     company: "",
     role: "",
@@ -46,14 +48,35 @@ const Home = () => {
       });
 
       if (result.success && result.searchId) {
+        // Show success toast notification
+        toast({
+          title: "Research Started!",
+          description: "Your interview research is being processed. This may take a few minutes. We'll show your results as soon as they're ready.",
+          duration: 5000,
+        });
+        
         // Navigate to dashboard with search ID
         navigate(`/dashboard?searchId=${result.searchId}`);
       } else {
-        setError(result.error?.message || "Failed to create search. Please try again.");
+        const errorMessage = result.error?.message || "Failed to create search. Please try again.";
+        setError(errorMessage);
+        toast({
+          title: "Error Starting Research",
+          description: errorMessage,
+          variant: "destructive",
+          duration: 5000,
+        });
       }
     } catch (err) {
       console.error("Error submitting search:", err);
-      setError("An unexpected error occurred. Please try again.");
+      const errorMessage = "An unexpected error occurred. Please try again.";
+      setError(errorMessage);
+      toast({
+        title: "Error Starting Research",
+        description: errorMessage,
+        variant: "destructive",
+        duration: 5000,
+      });
     } finally {
       setIsLoading(false);
     }

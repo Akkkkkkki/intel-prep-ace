@@ -18,10 +18,68 @@ import {
   GraduationCap,
   AlertCircle,
   CheckCircle,
-  Loader2
+  Loader2,
+  Phone,
+  Award,
+  Globe,
+  Code,
+  Star,
+  Building
 } from "lucide-react";
 import { searchService } from "@/services/searchService";
 import { useAuthContext } from "@/components/AuthProvider";
+
+interface ParsedData {
+  personalInfo?: {
+    name?: string;
+    email?: string;
+    phone?: string;
+    location?: string;
+    linkedin?: string;
+    github?: string;
+    website?: string;
+  };
+  professional?: {
+    currentRole?: string;
+    experience?: string;
+    summary?: string;
+    workHistory?: Array<{
+      title: string;
+      company: string;
+      duration: string;
+      description?: string;
+    }>;
+  };
+  education?: Array<{
+    degree: string;
+    institution: string;
+    year?: string;
+    description?: string;
+  }>;
+  skills?: {
+    technical?: string[];
+    programming?: string[];
+    frameworks?: string[];
+    tools?: string[];
+    soft?: string[];
+  };
+  projects?: Array<{
+    name: string;
+    description: string;
+    technologies?: string[];
+  }>;
+  certifications?: Array<{
+    name: string;
+    issuer?: string;
+    year?: string;
+  }>;
+  languages?: Array<{
+    language: string;
+    proficiency?: string;
+  }>;
+  achievements?: string[];
+  lastUpdated?: string;
+}
 
 const Profile = () => {
   const { user } = useAuthContext();
@@ -30,16 +88,8 @@ const Profile = () => {
   const [isSaving, setIsSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [success, setSuccess] = useState<string | null>(null);
-  const [parsedData, setParsedData] = useState<{
-    name?: string;
-    email?: string;
-    location?: string;
-    experience?: string;
-    currentRole?: string;
-    skills?: string[];
-    education?: string;
-    lastUpdated?: string;
-  } | null>(null);
+  const [parsedData, setParsedData] = useState<ParsedData | null>(null);
+  const [isAnalyzing, setIsAnalyzing] = useState(false);
 
   // Load existing CV data
   useEffect(() => {
@@ -56,16 +106,7 @@ const Profile = () => {
         if (result.success && result.resume) {
           setCvText(result.resume.content);
           if (result.resume.parsed_data) {
-            setParsedData(result.resume.parsed_data as {
-              name?: string;
-              email?: string;
-              location?: string;
-              experience?: string;
-              currentRole?: string;
-              skills?: string[];
-              education?: string;
-              lastUpdated?: string;
-            });
+            setParsedData(result.resume.parsed_data as ParsedData);
           }
         }
         // If no resume found, that's OK - user can create one
@@ -94,12 +135,20 @@ const Profile = () => {
     if (!user || !cvText.trim()) return;
 
     setIsSaving(true);
+    setIsAnalyzing(true);
     setError(null);
     setSuccess(null);
 
     try {
-      // Simple parsing for now - could be enhanced with AI in the future
-      const parsedInfo = parseCV(cvText);
+      // Use AI-powered analysis for better accuracy
+      const analysisResult = await searchService.analyzeCV(cvText.trim());
+      
+      if (!analysisResult.success) {
+        throw new Error(analysisResult.error?.message || "Failed to analyze CV");
+      }
+
+      const parsedInfo = analysisResult.parsedData;
+      setIsAnalyzing(false);
       
       const result = await searchService.saveResume({
         content: cvText.trim(),
@@ -108,7 +157,7 @@ const Profile = () => {
 
       if (result.success) {
         setParsedData(parsedInfo);
-        setSuccess("CV saved successfully!");
+        setSuccess("CV saved and analyzed successfully with AI!");
         // Clear success message after 3 seconds
         setTimeout(() => setSuccess(null), 3000);
       } else {
@@ -116,7 +165,8 @@ const Profile = () => {
       }
     } catch (err) {
       console.error("Error saving CV:", err);
-      setError("An unexpected error occurred while saving");
+      setError("An unexpected error occurred while saving or analyzing CV");
+      setIsAnalyzing(false);
     } finally {
       setIsSaving(false);
     }
@@ -134,47 +184,9 @@ const Profile = () => {
     }
   };
 
-  // Simple CV parsing function
-  const parseCV = (text: string) => {
-    const lines = text.split('\n');
-    const parsed: any = {
-      lastUpdated: new Date().toISOString().split('T')[0]
-    };
 
-    // Extract basic information
-    if (lines.length > 0) {
-      parsed.name = lines[0].trim();
-    }
-    if (lines.length > 1) {
-      parsed.currentRole = lines[1].trim();
-    }
 
-    // Look for email pattern
-    const emailMatch = text.match(/[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}/);
-    if (emailMatch) {
-      parsed.email = emailMatch[0];
-    }
 
-    // Extract skills (simple approach)
-    const skillsSection = text.toLowerCase();
-    const commonSkills = [
-      'javascript', 'python', 'java', 'typescript', 'react', 'node.js', 'aws', 
-      'docker', 'kubernetes', 'postgresql', 'mongodb', 'redis', 'sql', 'git',
-      'html', 'css', 'vue', 'angular', 'express', 'django', 'flask'
-    ];
-    
-    parsed.skills = commonSkills.filter(skill => 
-      skillsSection.includes(skill.toLowerCase())
-    );
-
-    // Look for experience years
-    const experienceMatch = text.match(/(\d+)\s*years?\s*(of\s*)?experience/i);
-    if (experienceMatch) {
-      parsed.experience = `${experienceMatch[1]} years`;
-    }
-
-    return parsed;
-  };
 
   if (isLoading) {
     return (
@@ -203,9 +215,7 @@ const Profile = () => {
     <div className="min-h-screen bg-background">
       <Navigation />
       <div className="container mx-auto px-4 py-8">
-        <div className="max-w-4xl mx-auto">
-
-
+        <div className="max-w-6xl mx-auto">
           {/* Status Messages */}
           {error && (
             <Alert variant="destructive" className="mb-6">
@@ -221,102 +231,251 @@ const Profile = () => {
             </Alert>
           )}
 
-          <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
+          <div className="grid grid-cols-1 xl:grid-cols-3 gap-8">
             {/* Parsed CV Information */}
-            <div className="lg:col-span-1">
-              <Card>
-                <CardHeader>
-                  <CardTitle className="flex items-center gap-2">
-                    <User className="h-5 w-5 text-primary" />
-                    Parsed Information
-                  </CardTitle>
-                  <CardDescription>
-                    Key details extracted from your CV
-                  </CardDescription>
-                </CardHeader>
-                <CardContent className="space-y-4">
-                  {parsedData ? (
-                    <>
-                      <div className="space-y-3">
-                        {parsedData.name && (
-                          <div className="flex items-center gap-2">
+            <div className="xl:col-span-2">
+              {parsedData ? (
+                <div className="space-y-6">
+                  {/* Personal Information */}
+                  {parsedData.personalInfo && Object.keys(parsedData.personalInfo).length > 0 && (
+                    <Card>
+                      <CardHeader>
+                        <CardTitle className="flex items-center gap-2">
+                          <User className="h-5 w-5 text-primary" />
+                          Personal Information
+                        </CardTitle>
+                      </CardHeader>
+                      <CardContent className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                        {parsedData.personalInfo.name && (
+                          <div className="flex items-center gap-3">
                             <User className="h-4 w-4 text-muted-foreground" />
-                            <span className="font-medium">{parsedData.name}</span>
+                            <div>
+                              <p className="font-medium">{parsedData.personalInfo.name}</p>
+                              <p className="text-xs text-muted-foreground">Full Name</p>
+                            </div>
                           </div>
                         )}
                         
-                        {parsedData.email && (
-                          <div className="flex items-center gap-2">
+                        {parsedData.personalInfo.email && (
+                          <div className="flex items-center gap-3">
                             <Mail className="h-4 w-4 text-muted-foreground" />
-                            <span className="text-sm">{parsedData.email}</span>
+                            <div>
+                              <p className="font-medium">{parsedData.personalInfo.email}</p>
+                              <p className="text-xs text-muted-foreground">Email</p>
+                            </div>
                           </div>
                         )}
                         
-                        {parsedData.location && (
-                          <div className="flex items-center gap-2">
+                        {parsedData.personalInfo.phone && (
+                          <div className="flex items-center gap-3">
+                            <Phone className="h-4 w-4 text-muted-foreground" />
+                            <div>
+                              <p className="font-medium">{parsedData.personalInfo.phone}</p>
+                              <p className="text-xs text-muted-foreground">Phone</p>
+                            </div>
+                          </div>
+                        )}
+                        
+                        {parsedData.personalInfo.location && (
+                          <div className="flex items-center gap-3">
                             <MapPin className="h-4 w-4 text-muted-foreground" />
-                            <span className="text-sm">{parsedData.location}</span>
+                            <div>
+                              <p className="font-medium">{parsedData.personalInfo.location}</p>
+                              <p className="text-xs text-muted-foreground">Location</p>
+                            </div>
                           </div>
                         )}
                         
-                        {parsedData.currentRole && (
-                          <div className="flex items-center gap-2">
-                            <Briefcase className="h-4 w-4 text-muted-foreground" />
-                            <span className="text-sm">{parsedData.currentRole}</span>
+                        {parsedData.personalInfo.linkedin && (
+                          <div className="flex items-center gap-3">
+                            <Globe className="h-4 w-4 text-muted-foreground" />
+                            <div>
+                              <p className="font-medium text-blue-600">{parsedData.personalInfo.linkedin}</p>
+                              <p className="text-xs text-muted-foreground">LinkedIn</p>
+                            </div>
                           </div>
                         )}
                         
-                        {parsedData.experience && (
-                          <div className="flex items-center gap-2">
-                            <Calendar className="h-4 w-4 text-muted-foreground" />
-                            <span className="text-sm">{parsedData.experience}</span>
+                        {parsedData.personalInfo.github && (
+                          <div className="flex items-center gap-3">
+                            <Code className="h-4 w-4 text-muted-foreground" />
+                            <div>
+                              <p className="font-medium text-blue-600">{parsedData.personalInfo.github}</p>
+                              <p className="text-xs text-muted-foreground">GitHub</p>
+                            </div>
                           </div>
                         )}
-                        
-                        {parsedData.education && (
-                          <div className="flex items-center gap-2">
-                            <GraduationCap className="h-4 w-4 text-muted-foreground" />
-                            <span className="text-sm">{parsedData.education}</span>
-                          </div>
-                        )}
-                      </div>
+                      </CardContent>
+                    </Card>
+                  )}
 
-                      {parsedData.skills && parsedData.skills.length > 0 && (
-                        <>
-                          <Separator />
+                  {/* Professional Experience */}
+                  {parsedData.professional && (
+                    <Card>
+                      <CardHeader>
+                        <CardTitle className="flex items-center gap-2">
+                          <Briefcase className="h-5 w-5 text-primary" />
+                          Professional Experience
+                        </CardTitle>
+                      </CardHeader>
+                      <CardContent className="space-y-4">
+                        {parsedData.professional.currentRole && (
                           <div>
-                            <p className="text-sm font-medium mb-2">Key Skills</p>
-                            <div className="flex flex-wrap gap-1">
-                              {parsedData.skills.map((skill, index) => (
+                            <p className="font-medium text-lg">{parsedData.professional.currentRole}</p>
+                            <p className="text-sm text-muted-foreground">Current Role</p>
+                          </div>
+                        )}
+                        
+                        {parsedData.professional.experience && (
+                          <div>
+                            <p className="font-medium">{parsedData.professional.experience}</p>
+                            <p className="text-sm text-muted-foreground">Total Experience</p>
+                          </div>
+                        )}
+                        
+                        {parsedData.professional.summary && (
+                          <div>
+                            <p className="text-sm">{parsedData.professional.summary}</p>
+                            <p className="text-xs text-muted-foreground mt-1">Professional Summary</p>
+                          </div>
+                        )}
+                      </CardContent>
+                    </Card>
+                  )}
+
+                  {/* Skills */}
+                  {parsedData.skills && (
+                    <Card>
+                      <CardHeader>
+                        <CardTitle className="flex items-center gap-2">
+                          <Code className="h-5 w-5 text-primary" />
+                          Skills & Technologies
+                        </CardTitle>
+                      </CardHeader>
+                      <CardContent className="space-y-4">
+                        {parsedData.skills.programming && parsedData.skills.programming.length > 0 && (
+                          <div>
+                            <p className="text-sm font-medium mb-2">Programming Languages</p>
+                            <div className="flex flex-wrap gap-2">
+                              {parsedData.skills.programming.map((skill, index) => (
+                                <Badge key={index} variant="default" className="text-xs">
+                                  {skill}
+                                </Badge>
+                              ))}
+                            </div>
+                          </div>
+                        )}
+                        
+                        {parsedData.skills.frameworks && parsedData.skills.frameworks.length > 0 && (
+                          <div>
+                            <p className="text-sm font-medium mb-2">Frameworks & Libraries</p>
+                            <div className="flex flex-wrap gap-2">
+                              {parsedData.skills.frameworks.map((skill, index) => (
                                 <Badge key={index} variant="secondary" className="text-xs">
                                   {skill}
                                 </Badge>
                               ))}
                             </div>
                           </div>
-                        </>
-                      )}
-
-                      <Separator />
-
-                      <div className="text-xs text-muted-foreground">
-                        Last updated: {parsedData.lastUpdated}
-                      </div>
-                    </>
-                  ) : (
-                    <div className="text-center text-muted-foreground py-8">
-                      <User className="h-8 w-8 mx-auto mb-2 opacity-50" />
-                      <p className="text-sm">No CV information available</p>
-                      <p className="text-xs">Save your CV to see parsed information</p>
-                    </div>
+                        )}
+                        
+                        {parsedData.skills.tools && parsedData.skills.tools.length > 0 && (
+                          <div>
+                            <p className="text-sm font-medium mb-2">Tools & Technologies</p>
+                            <div className="flex flex-wrap gap-2">
+                              {parsedData.skills.tools.map((skill, index) => (
+                                <Badge key={index} variant="outline" className="text-xs">
+                                  {skill}
+                                </Badge>
+                              ))}
+                            </div>
+                          </div>
+                        )}
+                      </CardContent>
+                    </Card>
                   )}
-                </CardContent>
-              </Card>
+
+                  {/* Education */}
+                  {parsedData.education && parsedData.education.length > 0 && (
+                    <Card>
+                      <CardHeader>
+                        <CardTitle className="flex items-center gap-2">
+                          <GraduationCap className="h-5 w-5 text-primary" />
+                          Education
+                        </CardTitle>
+                      </CardHeader>
+                      <CardContent className="space-y-3">
+                        {parsedData.education.map((edu, index) => (
+                          <div key={index} className="border-l-2 border-primary/20 pl-4">
+                            <p className="font-medium">{edu.degree}</p>
+                            <p className="text-sm text-muted-foreground">{edu.institution}</p>
+                            {edu.year && (
+                              <p className="text-xs text-muted-foreground">{edu.year}</p>
+                            )}
+                          </div>
+                        ))}
+                      </CardContent>
+                    </Card>
+                  )}
+
+                  {/* Projects */}
+                  {parsedData.projects && parsedData.projects.length > 0 && (
+                    <Card>
+                      <CardHeader>
+                        <CardTitle className="flex items-center gap-2">
+                          <Building className="h-5 w-5 text-primary" />
+                          Projects
+                        </CardTitle>
+                      </CardHeader>
+                      <CardContent className="space-y-3">
+                        {parsedData.projects.map((project, index) => (
+                          <div key={index} className="border rounded-lg p-3">
+                            <p className="font-medium">{project.name}</p>
+                            <p className="text-sm text-muted-foreground mt-1">{project.description}</p>
+                          </div>
+                        ))}
+                      </CardContent>
+                    </Card>
+                  )}
+
+                  {/* Certifications */}
+                  {parsedData.certifications && parsedData.certifications.length > 0 && (
+                    <Card>
+                      <CardHeader>
+                        <CardTitle className="flex items-center gap-2">
+                          <Award className="h-5 w-5 text-primary" />
+                          Certifications
+                        </CardTitle>
+                      </CardHeader>
+                      <CardContent className="space-y-2">
+                        {parsedData.certifications.map((cert, index) => (
+                          <div key={index} className="flex items-center justify-between">
+                            <p className="font-medium">{cert.name}</p>
+                            {cert.year && (
+                              <Badge variant="outline" className="text-xs">{cert.year}</Badge>
+                            )}
+                          </div>
+                        ))}
+                      </CardContent>
+                    </Card>
+                  )}
+                </div>
+              ) : (
+                <Card>
+                  <CardContent className="text-center py-12">
+                    <User className="h-12 w-12 mx-auto mb-4 opacity-50" />
+                    <h3 className="text-lg font-medium mb-2">No CV Information Available</h3>
+                    <p className="text-muted-foreground mb-4">
+                      Upload or paste your CV content to see detailed parsed information
+                    </p>
+                  </CardContent>
+                </Card>
+              )}
             </div>
 
             {/* CV Editor */}
-            <div className="lg:col-span-2">
-              <Card>
+            <div className="xl:col-span-1">
+              <Card className="h-fit">
                 <CardHeader>
                   <CardTitle className="flex items-center gap-2">
                     <FileText className="h-5 w-5 text-primary" />
@@ -328,12 +487,12 @@ const Profile = () => {
                 </CardHeader>
                 <CardContent className="space-y-6">
                   {/* Upload Section */}
-                  <div className="border-2 border-dashed border-border rounded-lg p-6">
-                    <div className="flex flex-col items-center justify-center space-y-4">
-                      <Upload className="h-8 w-8 text-muted-foreground" />
+                  <div className="border-2 border-dashed border-border rounded-lg p-4">
+                    <div className="flex flex-col items-center justify-center space-y-3">
+                      <Upload className="h-6 w-6 text-muted-foreground" />
                       <div className="text-center">
                         <p className="text-sm text-muted-foreground mb-2">
-                          Upload a new PDF to replace your current CV
+                          Upload PDF to replace current CV
                         </p>
                         <input
                           type="file"
@@ -361,7 +520,7 @@ const Profile = () => {
                     <Textarea
                       value={cvText}
                       onChange={(e) => setCvText(e.target.value)}
-                      rows={20}
+                      rows={15}
                       className="resize-none font-mono text-sm"
                       placeholder="Paste or type your CV content here..."
                     />
@@ -384,18 +543,29 @@ const Profile = () => {
                     
                     <Button 
                       onClick={handleSave} 
-                      disabled={!cvText.trim() || isSaving}
+                      disabled={!cvText.trim() || isSaving || isAnalyzing}
                     >
-                      {isSaving ? (
+                      {isAnalyzing ? (
+                        <>
+                          <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                          Analyzing with AI...
+                        </>
+                      ) : isSaving ? (
                         <>
                           <Loader2 className="h-4 w-4 mr-2 animate-spin" />
                           Saving...
                         </>
                       ) : (
-                        "Save Changes"
+                        "Save & Analyze with AI"
                       )}
                     </Button>
                   </div>
+
+                  {parsedData?.lastUpdated && (
+                    <div className="text-xs text-muted-foreground text-center pt-2 border-t">
+                      Last updated: {parsedData.lastUpdated}
+                    </div>
+                  )}
                 </CardContent>
               </Card>
             </div>

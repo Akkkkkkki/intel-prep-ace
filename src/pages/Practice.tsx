@@ -69,6 +69,7 @@ const Practice = () => {
   
   const [questions, setQuestions] = useState<Question[]>([]);
   const [allStages, setAllStages] = useState<InterviewStage[]>([]);
+  const [searchData, setSearchData] = useState<{ search_status: string; company?: string; role?: string } | null>(null);
   const [currentIndex, setCurrentIndex] = useState(0);
   const [answer, setAnswer] = useState("");
   const [isRecording, setIsRecording] = useState(false);
@@ -91,21 +92,37 @@ const Practice = () => {
       try {
         const result = await searchService.getSearchResults(searchId);
         
-        if (result.success && result.stages) {
-          // Transform stages data and add selection state
-          const transformedStages = result.stages
-            .sort((a, b) => a.order_index - b.order_index)
-            .map(stage => ({
-              ...stage,
-              selected: urlStageIds.length > 0 ? urlStageIds.includes(stage.id) : true // Default to all selected if no URL stages
-            }));
+        if (result.success && result.search) {
+          setSearchData(result.search);
           
-          setAllStages(transformedStages);
+          // Check if search is still processing
+          if (result.search.search_status === 'pending' || result.search.search_status === 'processing') {
+            setError(null); // Clear any previous errors
+            return; // Don't process stages yet, show processing state
+          }
           
-          // Update URL if no stages were specified (select all by default)
-          if (urlStageIds.length === 0) {
-            const allStageIds = transformedStages.map(stage => stage.id);
-            setSearchParams({ searchId, stages: allStageIds.join(',') });
+          if (result.search.search_status === 'failed') {
+            setError("Research processing failed. Please try starting a new search.");
+            return;
+          }
+          
+          // Only process stages if search is completed
+          if (result.search.search_status === 'completed' && result.stages) {
+            // Transform stages data and add selection state
+            const transformedStages = result.stages
+              .sort((a, b) => a.order_index - b.order_index)
+              .map(stage => ({
+                ...stage,
+                selected: urlStageIds.length > 0 ? urlStageIds.includes(stage.id) : true // Default to all selected if no URL stages
+              }));
+            
+            setAllStages(transformedStages);
+            
+            // Update URL if no stages were specified (select all by default)
+            if (urlStageIds.length === 0) {
+              const allStageIds = transformedStages.map(stage => stage.id);
+              setSearchParams({ searchId, stages: allStageIds.join(',') });
+            }
           }
         } else {
           setError(result.error?.message || "Failed to load search data");
@@ -327,6 +344,50 @@ const Practice = () => {
               <p className="text-muted-foreground">
                 Setting up your personalized interview practice...
               </p>
+            </CardContent>
+          </Card>
+        </div>
+      </div>
+    );
+  }
+
+  // Show processing state when research is still being processed
+  if (searchData && (searchData.search_status === 'pending' || searchData.search_status === 'processing')) {
+    return (
+      <div className="min-h-screen bg-background">
+        <Navigation />
+        <div className="container mx-auto px-4 py-8">
+          <Card className="w-full max-w-md mx-auto text-center">
+            <CardHeader>
+              <Brain className="h-12 w-12 text-primary mx-auto mb-4" />
+              <CardTitle>Research In Progress</CardTitle>
+              <CardDescription>
+                {searchData.company && `for ${searchData.company}`}
+                {searchData.role && ` - ${searchData.role}`}
+              </CardDescription>
+            </CardHeader>
+            <CardContent>
+              <div className="space-y-4">
+                <p className="text-muted-foreground">
+                  Your interview research is still being processed. Practice mode will be available once the research is complete.
+                </p>
+                <div className="space-y-2">
+                  <Button 
+                    onClick={() => navigate(`/dashboard?searchId=${searchId}`)}
+                    className="w-full"
+                  >
+                    <Brain className="h-4 w-4 mr-2" />
+                    View Research Progress
+                  </Button>
+                  <Button 
+                    variant="outline" 
+                    onClick={() => navigate('/')}
+                    className="w-full"
+                  >
+                    Start New Search
+                  </Button>
+                </div>
+              </div>
             </CardContent>
           </Card>
         </div>
