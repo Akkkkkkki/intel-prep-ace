@@ -901,3 +901,378 @@ CREATE POLICY "Service role can insert interview stages"
 5. **Data Integrity**: Robust database operations with proper validation
 
 The Phase 4 implementations represent a significant evolution from basic prototypes to production-ready systems, demonstrating sophisticated UX patterns, intelligent automation, and enterprise-grade reliability.
+
+## Phase 6: Comprehensive Research System Redesign ✅
+
+### Overview
+Phase 6 represents a complete overhaul of the research system to provide manual-level research depth, transforming the application from basic AI integration to a comprehensive interview preparation system that rivals thorough manual research.
+
+### 6.1 Enhanced Company Research Pipeline ✅
+
+**Problem Solved**: Limited research depth (4 searches) vs. comprehensive manual research approach.
+
+**New Implementation**: 15 targeted searches across multiple career platforms with AI-powered analysis.
+
+**Research Sources**:
+- **Glassdoor**: Core interview process and experiences
+- **Reddit**: Community discussions and insider insights
+- **LinkedIn**: Professional network insights and hiring manager perspectives
+- **LeetCode**: Technical interview questions and coding challenges
+- **Blind**: Anonymous employee feedback and interview experiences
+- **Levels.fyi**: Compensation and level-specific insights
+- **Interviewing.io**: Interview practice and feedback data
+
+**Search Strategy**:
+```typescript
+const searches = [
+  // Core interview process searches
+  `${company} interview process ${role} ${country} site:glassdoor.com`,
+  `${company} interview experience ${role} site:glassdoor.com`,
+  `${company} interview questions ${role} site:glassdoor.com`,
+  `${company} hiring process ${role} site:glassdoor.com`,
+  
+  // Multi-platform interview insights
+  `${company} ${role} interview site:levels.fyi`,
+  `${company} ${role} interview site:blind.teamblind.com`,
+  `${company} ${role} interview site:leetcode.com`,
+  `${company} ${role} interview site:interviewing.io`,
+  
+  // Reddit and forum discussions
+  `${company} ${role} interview experience site:reddit.com`,
+  `${company} ${role} interview questions site:reddit.com`,
+  
+  // Professional network insights
+  `${company} ${role} interview tips site:linkedin.com`,
+  `${company} hiring manager ${role} interview site:linkedin.com`,
+  
+  // Company culture and values
+  `${company} company culture values interview philosophy`,
+  `${company} what do they look for hiring criteria`,
+  `${company} interview red flags mistakes to avoid`
+];
+```
+
+**Enhanced Data Extraction**:
+```typescript
+interface CompanyInsights {
+  // Basic company information
+  name: string;
+  industry: string;
+  culture: string;
+  values: string[];
+  interview_philosophy: string;
+  recent_hiring_trends: string;
+  
+  // Deep interview insights
+  interview_experiences: {
+    positive_feedback: string[];
+    negative_feedback: string[];
+    common_themes: string[];
+    difficulty_rating: string;
+    process_duration: string;
+  };
+  
+  // Actual questions from reviews
+  interview_questions_bank: {
+    behavioral: string[];
+    technical: string[];
+    situational: string[];
+    company_specific: string[];
+  };
+  
+  // Hiring manager insights
+  hiring_manager_insights: {
+    what_they_look_for: string[];
+    red_flags: string[];
+    success_factors: string[];
+  };
+}
+```
+
+**Benefits**:
+- Glassdoor-level research depth with comprehensive multi-source analysis
+- Actual interview questions from candidate experiences
+- Company culture insights directly from employee feedback
+- Hiring manager perspectives and success factors
+
+### 6.2 Intelligent CV-Job Comparison System ✅
+
+**Problem Solved**: No sophisticated analysis of candidate fit vs. job requirements.
+
+**New Service**: `supabase/functions/cv-job-comparison/index.ts`
+
+**Core Features**:
+- **Skill Gap Analysis**: Matching, missing, and transferable skills identification
+- **Experience Gap Analysis**: Relevant experience mapping with mitigation strategies
+- **Personalized Story Bank**: STAR method stories based on candidate background
+- **Competitive Positioning**: Unique value proposition and differentiation strategy
+- **Overall Fit Scoring**: Quantified assessment with preparation priorities
+
+**Analysis Output**:
+```typescript
+interface CVJobComparisonOutput {
+  skill_gap_analysis: {
+    matching_skills: { technical: string[], soft: string[], certifications: string[] };
+    missing_skills: { technical: string[], soft: string[], certifications: string[] };
+    transferable_skills: { skill: string, relevance: string, how_to_position: string }[];
+    skill_match_percentage: { technical: number, soft: number, overall: number };
+  };
+  
+  experience_gap_analysis: {
+    relevant_experience: { experience: string, relevance_score: number, how_to_highlight: string }[];
+    missing_experience: { requirement: string, severity: string, mitigation_strategy: string }[];
+    experience_level_match: { required_years: number, candidate_years: number, level_match: string, gap_analysis: string };
+  };
+  
+  personalized_story_bank: {
+    stories: { situation: string, task: string, action: string, result: string, applicable_questions: string[], impact_quantified: string }[];
+    achievement_highlights: { achievement: string, quantified_impact: string, relevance_to_role: string, story_angle: string }[];
+  };
+  
+  interview_prep_strategy: {
+    strengths_to_emphasize: { strength: string, supporting_evidence: string, how_to_present: string }[];
+    weaknesses_to_address: { weakness: string, mitigation_strategy: string, improvement_plan: string }[];
+    competitive_positioning: { unique_value_proposition: string, differentiation_points: string[], positioning_strategy: string };
+    question_preparation_matrix: { question_type: string, priority: string, preparation_approach: string, sample_questions: string[] }[];
+  };
+  
+  overall_fit_score: number;
+  preparation_priorities: string[];
+}
+```
+
+**Benefits**:
+- Personalized interview preparation strategy
+- Quantified fit assessment for realistic expectations
+- Specific guidance on positioning strengths and addressing weaknesses
+- Comprehensive preparation roadmap with prioritized actions
+
+### 6.3 Advanced Interview Question Generation ✅
+
+**Problem Solved**: Generic question generation without company/role context.
+
+**New Service**: `supabase/functions/interview-question-generator/index.ts`
+
+**Question Categories**:
+- **Behavioral Questions**: STAR method compatible with candidate background
+- **Technical Questions**: Role-specific technical assessments
+- **Situational Questions**: Scenario-based problem-solving
+- **Company-Specific Questions**: Culture and values alignment
+- **Role-Specific Questions**: Position-specific competencies
+- **Experience-Based Questions**: Candidate background deep-dives
+- **Cultural Fit Questions**: Company alignment assessment
+
+**Enhanced Question Metadata**:
+```typescript
+interface GeneratedQuestion {
+  question: string;
+  type: string;
+  difficulty: string;
+  rationale: string;
+  suggested_answer_approach: string;
+  evaluation_criteria: string[];
+  follow_up_questions: string[];
+  star_story_fit: boolean;
+  company_context: string;
+}
+```
+
+**Benefits**:
+- Questions tailored to specific company culture and interview style
+- Evaluation criteria help candidates understand what interviewers seek
+- Follow-up questions prepare candidates for deeper discussions
+- Company context provides strategic answering insights
+
+### 6.4 Comprehensive Database Schema Enhancement ✅
+
+**New Migration**: `supabase/migrations/20250121000000_add_enhanced_research_data.sql`
+
+**New Tables**:
+- **`cv_job_comparisons`**: Detailed skill and experience gap analysis
+- **`enhanced_question_banks`**: Comprehensive question storage by interview stage
+- **`interview_experiences`**: Research-based interview experience storage
+
+**Enhanced Searches Table**:
+```sql
+ALTER TABLE public.searches 
+ADD COLUMN cv_job_comparison JSONB,
+ADD COLUMN enhanced_question_bank JSONB,
+ADD COLUMN preparation_priorities TEXT[],
+ADD COLUMN overall_fit_score FLOAT;
+```
+
+**Database Functions**:
+- **`get_enhanced_search_results()`**: Comprehensive search result retrieval
+- **`update_question_bank_total()`**: Automatic question count maintenance
+- **`find_similar_tavily_search()`**: Intelligent caching and deduplication
+
+**Benefits**:
+- Structured storage for complex AI-generated insights
+- Efficient querying with comprehensive indexing
+- Automatic data maintenance and aggregation
+- Complete audit trail for research processes
+
+### 6.5 Frontend Integration Enhancement ✅
+
+**Updated Service**: `src/services/searchService.ts`
+
+**New Data Retrieval**:
+```typescript
+async getSearchResults(searchId: string) {
+  // Enhanced data fetching including:
+  // - CV-Job comparison data
+  // - Enhanced question banks
+  // - Interview experiences
+  // - Preparation priorities
+  
+  return {
+    search, 
+    stages: stagesWithQuestions,
+    cvJobComparison: cvJobComparison || null,
+    enhancedQuestions: enhancedQuestions || [],
+    success: true
+  };
+}
+```
+
+**Bug Fixes**:
+- **Memory Leak**: Fixed Dashboard polling useEffect with proper cleanup
+- **Type Safety**: Eliminated dangerous `any` types in Auth components
+- **Error Handling**: Enhanced error boundaries and validation
+- **State Management**: Improved navigation context preservation
+
+**Benefits**:
+- Seamless integration of enhanced research data
+- Improved application stability and performance
+- Better user experience with proper error handling
+- Type-safe data handling throughout the application
+
+### 6.6 AI-Powered Research Pipeline ✅
+
+**Enhanced Orchestration**: `supabase/functions/interview-research/index.ts`
+
+**Multi-Stage Processing**:
+1. **Parallel Data Gathering**: Company research, job analysis, CV analysis
+2. **CV-Job Comparison**: Intelligent matching and gap analysis
+3. **Enhanced Question Generation**: Stage-specific question creation
+4. **Comprehensive Storage**: All data persisted with relationships
+
+**AI Models Used**:
+- **GPT-4o**: Complex synthesis and comparison tasks
+- **GPT-4o-mini**: Focused analysis tasks (CV, job descriptions)
+- **Structured JSON Output**: Enforced schemas for consistent data
+
+**Processing Flow**:
+```typescript
+// Step 1: Gather data from all sources
+const [companyInsights, jobRequirements, cvAnalysis] = await Promise.all([
+  gatherCompanyData(company, role, country, searchId),
+  gatherJobData(roleLinks || [], searchId, company, role),
+  gatherCVData(cv || "", userId)
+]);
+
+// Step 2: Generate comprehensive comparison
+const cvJobComparison = await generateCVJobComparison(
+  searchId, userId, cvAnalysis, jobRequirements, companyInsights
+);
+
+// Step 3: Create enhanced question banks
+const enhancedQuestions = await generateEnhancedQuestions(
+  searchId, userId, companyInsights, jobRequirements, cvAnalysis, synthesisResult.interview_stages
+);
+```
+
+**Benefits**:
+- Comprehensive research combining multiple AI-powered analyses
+- Parallel processing for improved performance
+- Enhanced data relationships and cross-referencing
+- Production-ready error handling and fallbacks
+
+## Research Depth Comparison
+
+### Before: Basic AI Integration
+- 4 basic company searches
+- Generic CV parsing
+- Template-based question generation
+- No job-CV comparison
+- Limited personalization
+
+### After: Comprehensive Research System
+- **15 targeted searches** across 8+ platforms
+- **Intelligent CV-job comparison** with gap analysis
+- **Personalized story bank** generation
+- **Enhanced question banks** with metadata
+- **Company culture insights** from actual employee feedback
+- **Hiring manager perspectives** and success factors
+- **Preparation priorities** and strategic guidance
+- **Overall fit scoring** for realistic expectations
+
+## Technical Architecture
+
+### Microservices Design
+```
+Enhanced Research Pipeline:
+├── company-research (15 searches across platforms)
+├── job-analysis (URL extraction and requirements)
+├── cv-analysis (AI-powered profile parsing)
+├── cv-job-comparison (intelligent matching service)
+├── interview-question-generator (contextual questions)
+└── interview-research (orchestration and synthesis)
+```
+
+### Data Storage Architecture
+```
+Enhanced Database Schema:
+├── searches (main records with enhanced fields)
+├── interview_stages (generated stages)
+├── interview_questions (basic questions)
+├── cv_job_comparisons (detailed analysis)
+├── enhanced_question_banks (advanced questions)
+├── interview_experiences (research findings)
+└── tavily_searches (API usage tracking)
+```
+
+### AI Integration Architecture
+```
+AI Processing Pipeline:
+├── Tavily API (15 searches for company research)
+├── OpenAI GPT-4o (complex synthesis tasks)
+├── OpenAI GPT-4o-mini (focused analysis)
+├── Structured JSON schemas (type-safe outputs)
+└── Fallback mechanisms (graceful degradation)
+```
+
+## Impact and Benefits
+
+### For Users
+1. **Manual-Level Research Depth**: 15+ searches provide comprehensive insights
+2. **Personalized Preparation**: AI-powered analysis of candidate fit
+3. **Actionable Guidance**: Specific strategies for interview success
+4. **Realistic Expectations**: Quantified fit scoring and gap analysis
+5. **Comprehensive Question Banks**: Contextual questions with evaluation criteria
+
+### For System
+1. **Production-Ready Architecture**: Microservices with proper error handling
+2. **Scalable Design**: Efficient API usage with intelligent caching
+3. **Comprehensive Analytics**: Full audit trail and performance monitoring
+4. **Type-Safe Implementation**: Complete TypeScript coverage
+5. **Enhanced Security**: Proper RLS policies and data protection
+
+### Technical Achievements
+1. **AI Integration Excellence**: Multiple models with structured outputs
+2. **Database Optimization**: Comprehensive indexing and triggers
+3. **Frontend Stability**: Memory leak fixes and error boundaries
+4. **Service Architecture**: Clean separation of concerns
+5. **Performance Optimization**: Parallel processing and smart caching
+
+## Summary
+
+Phase 6 transforms the interview preparation application from a basic AI tool to a comprehensive research system that rivals thorough manual preparation. The system now provides:
+
+- **Glassdoor-level research depth** with 15+ targeted searches
+- **Intelligent CV-job comparison** with gap analysis and strategies
+- **Personalized question banks** based on company culture and candidate background
+- **Comprehensive preparation guidance** with prioritized action items
+- **Production-ready architecture** with proper monitoring and error handling
+
+This implementation delivers the thorough, manual-level research experience requested, powered by sophisticated AI analysis and comprehensive data gathering across multiple career platforms.
