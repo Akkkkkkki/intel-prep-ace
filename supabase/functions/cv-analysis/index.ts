@@ -157,10 +157,20 @@ ${cvText}`
     return JSON.parse(analysisText);
   } catch (parseError) {
     console.error("Failed to parse CV analysis JSON:", parseError);
-    // Return minimal fallback structure
+    // Return complete fallback structure with all required fields
     return {
+      name: undefined,
+      email: undefined,
+      phone: undefined,
+      location: undefined,
+      current_role: undefined,
+      experience_years: undefined,
       skills: { technical: [], soft: [], certifications: [] },
-      education: {},
+      education: {
+        degree: undefined,
+        institution: undefined,
+        graduation_year: undefined
+      },
       experience: [],
       projects: [],
       key_achievements: []
@@ -200,13 +210,17 @@ function convertToProfileFormat(aiAnalysis: CVAnalysis): ProfileParsedData {
     professional: {
       currentRole: aiAnalysis.current_role,
       experience: aiAnalysis.experience_years ? `${aiAnalysis.experience_years}+ years` : undefined,
-      summary: aiAnalysis.key_achievements.slice(0, 3).join('. '),
-      workHistory: aiAnalysis.experience.map(exp => ({
-        title: exp.role,
-        company: exp.company,
-        duration: exp.duration,
-        description: exp.achievements.join('. ')
-      }))
+      summary: (aiAnalysis.key_achievements && aiAnalysis.key_achievements.length > 0) 
+        ? aiAnalysis.key_achievements.slice(0, 3).join('. ') 
+        : undefined,
+      workHistory: (aiAnalysis.experience && aiAnalysis.experience.length > 0) 
+        ? aiAnalysis.experience.map(exp => ({
+            title: exp.role,
+            company: exp.company,
+            duration: exp.duration,
+            description: exp.achievements.join('. ')
+          }))
+        : []
     },
     education: aiAnalysis.education ? [{
       degree: aiAnalysis.education.degree || 'Degree',
@@ -221,24 +235,28 @@ function convertToProfileFormat(aiAnalysis: CVAnalysis): ProfileParsedData {
       tools: tools,
       soft: aiAnalysis.skills.soft || []
     },
-    projects: typeof aiAnalysis.projects[0] === 'string' 
-      ? aiAnalysis.projects.map((project: string) => ({
-          name: project.split(':')[0] || project,
-          description: project,
-          technologies: []
+    projects: (aiAnalysis.projects && aiAnalysis.projects.length > 0)
+      ? (typeof aiAnalysis.projects[0] === 'string' 
+          ? aiAnalysis.projects.map((project: string) => ({
+              name: project.split(':')[0] || project,
+              description: project,
+              technologies: []
+            }))
+          : aiAnalysis.projects.map((project: any) => ({
+              name: project.name || project,
+              description: project.description || project,
+              technologies: project.technologies || []
+            })))
+      : [],
+    certifications: (aiAnalysis.skills.certifications && aiAnalysis.skills.certifications.length > 0)
+      ? aiAnalysis.skills.certifications.map(cert => ({
+          name: cert,
+          issuer: undefined,
+          year: undefined
         }))
-      : aiAnalysis.projects.map((project: any) => ({
-          name: project.name || project,
-          description: project.description || project,
-          technologies: project.technologies || []
-        })),
-    certifications: aiAnalysis.skills.certifications.map(cert => ({
-      name: cert,
-      issuer: undefined,
-      year: undefined
-    })),
+      : [],
     languages: [],
-    achievements: aiAnalysis.key_achievements,
+    achievements: aiAnalysis.key_achievements || [],
     lastUpdated: new Date().toISOString().split('T')[0]
   };
 }

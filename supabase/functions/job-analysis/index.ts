@@ -30,33 +30,105 @@ interface JobAnalysisOutput {
   urls_processed: number;
 }
 
-// Extract job description content using Tavily
-async function extractJobDescriptions(urls: string[]): Promise<any> {
+// Extract job description content using Tavily with comprehensive logging
+async function extractJobDescriptions(
+  urls: string[], 
+  searchId?: string, 
+  userId?: string, 
+  supabase?: any
+): Promise<any> {
   const tavilyApiKey = Deno.env.get("TAVILY_API_KEY");
   if (!tavilyApiKey || !urls.length) {
     console.warn("TAVILY_API_KEY not found or no URLs provided, skipping job extraction");
     return null;
   }
 
+  const startTime = Date.now();
+  const endpoint = 'https://api.tavily.com/extract';
+  const limitedUrls = urls.slice(0, 5); // Limit to 5 URLs for efficiency
+  
+  const requestPayload = {
+    urls: limitedUrls,
+    extract_depth: 'advanced',
+    include_images: false
+  };
+
   try {
-    const response = await fetch('https://api.tavily.com/extract', {
+    const response = await fetch(endpoint, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
         'Authorization': `Bearer ${tavilyApiKey}`,
       },
-      body: JSON.stringify({
-        urls: urls.slice(0, 5), // Limit to 5 URLs for efficiency
-        extract_depth: 'advanced',
-        include_images: false
-      }),
+      body: JSON.stringify(requestPayload),
     });
 
+    const duration = Date.now() - startTime;
+    const responseData = response.ok ? await response.json() : null;
+    const resultsCount = responseData?.results?.length || 0;
+
+    // Log to database if supabase client is available
+    if (supabase && searchId && userId) {
+      try {
+        await supabase
+          .from("tavily_searches")
+          .insert({
+            search_id: searchId,
+            user_id: userId,
+            api_type: 'extract',
+            endpoint_url: endpoint,
+            request_payload: requestPayload,
+            query_text: `Extract from ${limitedUrls.length} URLs: ${limitedUrls.join(', ')}`,
+            search_depth: 'advanced',
+            max_results: limitedUrls.length,
+            include_domains: [], // Not applicable for extract
+            response_payload: responseData,
+            response_status: response.status,
+            results_count: resultsCount,
+            request_duration_ms: duration,
+            credits_used: Math.ceil(limitedUrls.length / 5) * 2, // Extract = 2 credits per 5 URLs with advanced depth
+            error_message: response.ok ? null : `HTTP ${response.status}: ${response.statusText}`
+          });
+      } catch (logError) {
+        console.error("Failed to log Tavily extract:", logError);
+        // Don't fail the main operation due to logging errors
+      }
+    }
+
     if (response.ok) {
-      return await response.json();
+      return responseData;
     }
     return null;
   } catch (error) {
+    const duration = Date.now() - startTime;
+    
+    // Log error to database if supabase client is available
+    if (supabase && searchId && userId) {
+      try {
+        await supabase
+          .from("tavily_searches")
+          .insert({
+            search_id: searchId,
+            user_id: userId,
+            api_type: 'extract',
+            endpoint_url: endpoint,
+            request_payload: requestPayload,
+            query_text: `Extract from ${limitedUrls.length} URLs: ${limitedUrls.join(', ')}`,
+            search_depth: 'advanced',
+            max_results: limitedUrls.length,
+            include_domains: [],
+            response_payload: null,
+            response_status: 0,
+            results_count: 0,
+            request_duration_ms: duration,
+            credits_used: 0, // No credits charged for failed requests
+            error_message: error.message || "Network/API error"
+          });
+      } catch (logError) {
+        console.error("Failed to log Tavily extract error:", logError);
+      }
+    }
+    
     console.error("Error in Tavily job description extraction:", error);
     return null;
   }
@@ -171,9 +243,18 @@ serve(async (req) => {
 
     console.log("Starting job analysis for", roleLinks.length, "URLs");
 
+    // Get userId from searches table for logging
+    const { data: searchData } = await supabase
+      .from("searches")
+      .select("user_id")
+      .eq("id", searchId)
+      .single();
+    
+    const userId = searchData?.user_id;
+
     // Step 1: Extract job description content using Tavily
     console.log("Extracting job descriptions...");
-    const jobData = await extractJobDescriptions(roleLinks);
+    const jobData = await extractJobDescriptions(roleLinks, searchId, userId, supabase);
 
     if (!jobData || !jobData.results || jobData.results.length === 0) {
       console.warn("No job description data extracted");

@@ -117,9 +117,17 @@ const Dashboard = () => {
 
     // Set up polling for pending/processing searches
     const poll = setInterval(async () => {
-      if (searchData?.search_status === 'pending' || searchData?.search_status === 'processing') {
-        await loadSearchData();
-        setProgress(prev => Math.min(prev + 5, 95)); // Increment progress while polling
+      // Re-fetch current search data to check status
+      const result = await searchService.getSearchResults(searchId);
+      if (result.success && result.search) {
+        const currentStatus = result.search.search_status;
+        if (currentStatus === 'pending' || currentStatus === 'processing') {
+          await loadSearchData();
+          setProgress(prev => Math.min(prev + 5, 95)); // Increment progress while polling
+        } else {
+          // Search is completed, stop polling
+          clearInterval(poll);
+        }
       }
     }, 3000); // Poll every 3 seconds
 
@@ -129,7 +137,7 @@ const Dashboard = () => {
       if (pollingInterval) clearInterval(pollingInterval);
       clearInterval(poll);
     };
-  }, [searchId]);
+  }, [searchId]); // Only depend on searchId - loadSearchData and pollingInterval are intentionally excluded
 
   // Progress simulation for pending/processing states
   useEffect(() => {

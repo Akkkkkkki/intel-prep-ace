@@ -24,6 +24,24 @@ interface CompanyInsights {
   values: string[];
   interview_philosophy: string;
   recent_hiring_trends: string;
+  interview_experiences: {
+    positive_feedback: string[];
+    negative_feedback: string[];
+    common_themes: string[];
+    difficulty_rating: string;
+    process_duration: string;
+  };
+  interview_questions_bank: {
+    behavioral: string[];
+    technical: string[];
+    situational: string[];
+    company_specific: string[];
+  };
+  hiring_manager_insights: {
+    what_they_look_for: string[];
+    red_flags: string[];
+    success_factors: string[];
+  };
 }
 
 interface InterviewStageStructured {
@@ -56,6 +74,9 @@ interface AIResearchOutput {
     day_before: string[];
     day_of: string[];
   };
+  cv_job_comparison: any;
+  enhanced_question_bank: any;
+  preparation_priorities: string[];
 }
 
 // Call other microservices for data gathering
@@ -157,6 +178,93 @@ async function gatherCVData(cv: string, userId: string) {
   } catch (error) {
     console.error("Error calling cv-analysis:", error);
     return null;
+  }
+}
+
+async function generateCVJobComparison(
+  searchId: string,
+  userId: string,
+  cvAnalysis: any,
+  jobRequirements: any,
+  companyInsights: any
+) {
+  if (!cvAnalysis || !jobRequirements) {
+    console.log("Insufficient data for CV-Job comparison");
+    return null;
+  }
+
+  try {
+    console.log("Calling cv-job-comparison function...");
+    
+    const response = await fetch(`${Deno.env.get("SUPABASE_URL")}/functions/v1/cv-job-comparison`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")}`,
+      },
+      body: JSON.stringify({
+        searchId,
+        userId,
+        cvAnalysis,
+        jobRequirements,
+        companyInsights
+      }),
+    });
+
+    if (response.ok) {
+      const result = await response.json();
+      return result.comparison_result;
+    }
+    
+    console.warn("CV-Job comparison failed, continuing without data");
+    return null;
+  } catch (error) {
+    console.error("Error calling cv-job-comparison:", error);
+    return null;
+  }
+}
+
+async function generateEnhancedQuestions(
+  searchId: string,
+  userId: string,
+  companyInsights: any,
+  jobRequirements: any,
+  cvAnalysis: any,
+  interviewStages: any[]
+) {
+  try {
+    console.log("Calling interview-question-generator function...");
+    
+    const questionPromises = interviewStages.map(async (stage) => {
+      const response = await fetch(`${Deno.env.get("SUPABASE_URL")}/functions/v1/interview-question-generator`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")}`,
+        },
+        body: JSON.stringify({
+          searchId,
+          userId,
+          companyInsights,
+          jobRequirements,
+          cvAnalysis,
+          interviewStage: stage.name,
+          stageDetails: stage
+        }),
+      });
+
+      if (response.ok) {
+        const result = await response.json();
+        return { stage: stage.name, questions: result.question_bank };
+      }
+      return null;
+    });
+
+    const results = await Promise.all(questionPromises);
+    return results.filter(r => r !== null);
+  } catch (error) {
+    console.error("Error calling interview-question-generator:", error);
+    return [];
   }
 }
 
@@ -378,9 +486,30 @@ serve(async (req) => {
       openaiApiKey
     );
 
+    // Step 3: Generate enhanced CV-Job comparison
+    console.log("Generating CV-Job comparison...");
+    const cvJobComparison = await generateCVJobComparison(
+      searchId,
+      userId,
+      cvAnalysis,
+      jobRequirements,
+      companyInsights
+    );
+
+    // Step 4: Generate enhanced question bank for each stage
+    console.log("Generating enhanced question bank...");
+    const enhancedQuestions = await generateEnhancedQuestions(
+      searchId,
+      userId,
+      companyInsights,
+      jobRequirements,
+      cvAnalysis,
+      synthesisResult.interview_stages
+    );
+
     console.log("Storing final results...");
 
-    // Step 3: Store interview stages and questions in database
+    // Step 5: Store interview stages and questions in database
     for (const stage of synthesisResult.interview_stages) {
       // Insert stage
       const { data: stageData, error: stageError } = await supabase
@@ -412,7 +541,7 @@ serve(async (req) => {
       if (questionsError) throw questionsError;
     }
 
-    // Step 4: Save CV analysis if provided
+    // Step 6: Save CV analysis if provided
     if (cv && cvAnalysis) {
       await supabase
         .from("resumes")
@@ -424,10 +553,57 @@ serve(async (req) => {
         });
     }
 
-    // Step 5: Update search status to completed
+    // Step 7: Store enhanced question bank and comparison data
+    if (cvJobComparison) {
+      await supabase
+        .from("cv_job_comparisons")
+        .insert({
+          search_id: searchId,
+          user_id: userId,
+          skill_gap_analysis: cvJobComparison.skill_gap_analysis,
+          experience_gap_analysis: cvJobComparison.experience_gap_analysis,
+          personalized_story_bank: cvJobComparison.personalized_story_bank,
+          interview_prep_strategy: cvJobComparison.interview_prep_strategy,
+          overall_fit_score: cvJobComparison.overall_fit_score,
+          preparation_priorities: cvJobComparison.preparation_priorities
+        });
+    }
+
+    // Store enhanced question banks for each stage
+    if (enhancedQuestions && enhancedQuestions.length > 0) {
+      for (const stageQuestions of enhancedQuestions) {
+        await supabase
+          .from("enhanced_question_banks")
+          .insert({
+            search_id: searchId,
+            user_id: userId,
+            interview_stage: stageQuestions.stage,
+            behavioral_questions: stageQuestions.questions.behavioral_questions || [],
+            technical_questions: stageQuestions.questions.technical_questions || [],
+            situational_questions: stageQuestions.questions.situational_questions || [],
+            company_specific_questions: stageQuestions.questions.company_specific_questions || [],
+            role_specific_questions: stageQuestions.questions.role_specific_questions || [],
+            experience_based_questions: stageQuestions.questions.experience_based_questions || [],
+            cultural_fit_questions: stageQuestions.questions.cultural_fit_questions || [],
+            generation_context: {
+              company_insights: !!companyInsights,
+              job_requirements: !!jobRequirements,
+              cv_analysis: !!cvAnalysis
+            }
+          });
+      }
+    }
+
+    // Step 8: Update search status to completed
     await supabase
       .from("searches")
-      .update({ search_status: "completed" })
+      .update({ 
+        search_status: "completed",
+        cv_job_comparison: cvJobComparison,
+        enhanced_question_bank: enhancedQuestions,
+        preparation_priorities: cvJobComparison?.preparation_priorities || [],
+        overall_fit_score: cvJobComparison?.overall_fit_score || 0
+      })
       .eq("id", searchId);
 
     console.log("Interview synthesis completed successfully");
@@ -441,7 +617,11 @@ serve(async (req) => {
           job_data_found: !!jobRequirements,
           cv_analyzed: !!cvAnalysis,
           stages_created: synthesisResult.interview_stages.length,
-          personalized_guidance: synthesisResult.personalized_guidance
+          personalized_guidance: synthesisResult.personalized_guidance,
+          cv_job_comparison: cvJobComparison,
+          enhanced_questions: enhancedQuestions,
+          preparation_priorities: cvJobComparison?.preparation_priorities || [],
+          overall_fit_score: cvJobComparison?.overall_fit_score || 0
         }
       }),
       {

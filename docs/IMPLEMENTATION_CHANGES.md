@@ -460,6 +460,112 @@ OPENAI_API_KEY=your-openai-api-key
 ### Overview
 Phase 4 refactored the monolithic interview-research function into a clean microservices architecture, addressing code duplication and improving maintainability.
 
+## Phase 5: Tavily API Storage & Analytics System ✅
+
+### Overview
+Phase 5 implemented comprehensive Tavily API usage tracking, storage, and analytics to provide complete transparency into API costs, performance, and usage patterns.
+
+### 5.1 Database Schema Enhancement ✅
+
+**Problem Solved**: No tracking of Tavily API usage, costs, or performance metrics.
+
+**New Tables Added**:
+- **`tavily_searches`** - Complete logging of all Tavily API calls with request/response data
+- **`tavily_usage_stats`** - Daily aggregated usage statistics per user
+
+**Key Features**:
+- Full request/response payload storage in JSONB format
+- Performance metrics (response time, success rate, error tracking)
+- Credit usage tracking and cost analysis
+- Search text indexing for efficient querying
+- Automated daily statistics aggregation via triggers
+
+### 5.2 Enhanced Edge Functions with Logging ✅
+
+**Functions Updated**:
+- **`company-research`** - Now logs all Tavily search API calls
+- **`job-analysis`** - Now logs all Tavily extract API calls
+
+**Logging Implementation**:
+```typescript
+// Non-blocking comprehensive logging
+await supabase
+  .from("tavily_searches")
+  .insert({
+    search_id, user_id, api_type: 'search',
+    request_payload, response_payload,
+    credits_used, request_duration_ms,
+    response_status, results_count,
+    error_message, query_text
+  });
+```
+
+**Benefits**:
+- Zero impact on main operation performance
+- Complete audit trail of all API usage
+- Real-time cost tracking
+- Error pattern analysis
+
+### 5.3 Analytics Service Implementation ✅
+
+**New Service**: `src/services/tavilyAnalyticsService.ts`
+
+**Core Capabilities**:
+```typescript
+// User usage analytics
+const { analytics } = await tavilyAnalyticsService.getUserAnalytics(30);
+
+// Cost estimation
+const { estimatedCost } = tavilyAnalyticsService.getCostEstimate(analytics);
+
+// Search caching detection
+const { search } = await tavilyAnalyticsService.findSimilarSearch(query, type);
+```
+
+**Analytics Provided**:
+- Total credits used and estimated costs
+- Performance metrics (response times, success rates)
+- Top companies researched
+- Error breakdown and troubleshooting data
+- Daily usage trends and patterns
+
+### 5.4 Intelligent Caching Foundation ✅
+
+**Smart Deduplication**:
+- Automatic detection of similar searches within configurable timeframe
+- Database function `find_similar_tavily_search()` for efficient lookups
+- Foundation for cache-first search strategy to reduce API costs
+
+**Cost Savings Potential**:
+- Avoid duplicate company research calls
+- Reuse recent job analysis results
+- Significant reduction in redundant API usage
+
+## Environment Variables Added for Phase 5:
+```bash
+# Existing - no new variables required
+TAVILY_API_KEY=tvly-your-api-key-here
+```
+
+## Benefits Achieved in Phase 5:
+
+### For Users:
+1. **Transparent Costs**: Complete visibility into Tavily API usage and spending
+2. **Performance Insights**: Understanding of search response times and reliability  
+3. **Smart Caching**: Reduced wait times through intelligent result reuse
+
+### For System:
+1. **Complete Audit Trail**: Every API call tracked for debugging and analysis
+2. **Cost Control**: Real-time monitoring and budget management capabilities
+3. **Performance Optimization**: Data-driven insights for system improvements
+4. **Error Analysis**: Pattern detection for enhanced reliability
+
+### Technical Improvements:
+1. **Comprehensive Logging**: Non-blocking storage of all API interactions
+2. **Analytics Foundation**: Rich data for business intelligence and optimization
+3. **Caching Infrastructure**: Smart deduplication to reduce costs and improve speed
+4. **Scalable Architecture**: Prepared for advanced features like budget alerts and forecasting
+
 ### 4.1 Architecture Transformation ✅
 
 **Before (Monolithic)**:

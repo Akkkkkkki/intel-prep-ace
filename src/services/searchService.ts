@@ -61,7 +61,7 @@ export const searchService = {
 
   async getSearchResults(searchId: string) {
     try {
-      // Get the search record
+      // Get the search record with enhanced data
       const { data: search, error: searchError } = await supabase
         .from("searches")
         .select("*")
@@ -96,7 +96,34 @@ export const searchService = {
         })
       );
 
-      return { search, stages: stagesWithQuestions, success: true };
+      // Get CV-Job comparison data
+      const { data: cvJobComparison, error: cvJobError } = await supabase
+        .from("cv_job_comparisons")
+        .select("*")
+        .eq("search_id", searchId)
+        .single();
+
+      if (cvJobError && cvJobError.code !== 'PGRST116') { // PGRST116 is "not found"
+        console.warn("CV-Job comparison not found:", cvJobError);
+      }
+
+      // Get enhanced question banks
+      const { data: enhancedQuestions, error: enhancedError } = await supabase
+        .from("enhanced_question_banks")
+        .select("*")
+        .eq("search_id", searchId);
+
+      if (enhancedError) {
+        console.warn("Enhanced questions not found:", enhancedError);
+      }
+
+      return { 
+        search, 
+        stages: stagesWithQuestions, 
+        cvJobComparison: cvJobComparison || null,
+        enhancedQuestions: enhancedQuestions || [],
+        success: true 
+      };
     } catch (error) {
       console.error("Error getting search results:", error);
       return { error, success: false };
@@ -179,12 +206,14 @@ export const searchService = {
         .select("*")
         .eq("user_id", userId)
         .order("created_at", { ascending: false })
-        .limit(1)
-        .single();
+        .limit(1);
 
-      if (error && error.code !== "PGRST116") throw error; // PGRST116 is "no rows returned"
+      if (error) throw error;
 
-      return { resume: data, success: true };
+      // Return the first resume if exists, otherwise null
+      const resume = data && data.length > 0 ? data[0] : null;
+
+      return { resume, success: true };
     } catch (error) {
       console.error("Error getting resume:", error);
       return { error, success: false };
@@ -217,7 +246,7 @@ export const searchService = {
     }
   },
 
-  async saveResume({ content, parsedData }: { content: string; parsedData?: any }) {
+  async saveResume({ content, parsedData }: { content: string; parsedData?: Record<string, unknown> }) {
     try {
       const { data: user } = await supabase.auth.getUser();
       

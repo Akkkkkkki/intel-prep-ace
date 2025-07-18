@@ -26,7 +26,7 @@ const Auth = () => {
   // If user is already logged in, redirect them
   useEffect(() => {
     if (user) {
-      const from = (location.state as any)?.from?.pathname || "/dashboard";
+      const from = (location.state as { from?: { pathname: string } })?.from?.pathname || "/dashboard";
       navigate(from, { replace: true });
     }
   }, [user, navigate, location]);
@@ -65,11 +65,11 @@ const Auth = () => {
         }
         
         setSuccess("Successfully signed in!");
-        const from = (location.state as any)?.from?.pathname || "/dashboard";
+        const from = (location.state as { from?: { pathname: string } })?.from?.pathname || "/dashboard";
         navigate(from, { replace: true });
       }
-    } catch (err: any) {
-      setError(err.message || "Authentication failed. Please try again.");
+    } catch (err: unknown) {
+      setError(err instanceof Error ? err.message : "Authentication failed. Please try again.");
     } finally {
       setIsLoading(false);
     }
