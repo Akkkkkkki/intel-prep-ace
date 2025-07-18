@@ -131,6 +131,10 @@ const Navigation = ({ showHistory = false, showSearchSelector = true }: Navigati
   };
 
   const getNavigationPath = (path: string) => {
+    // For practice page, always include searchId if available to ensure questions load
+    if (path === "/practice" && currentSearchId) {
+      return `${path}?searchId=${currentSearchId}`;
+    }
     return currentSearchId ? `${path}?searchId=${currentSearchId}` : path;
   };
 

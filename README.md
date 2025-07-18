@@ -9,11 +9,12 @@ A modern, AI-powered interview preparation tool that helps small circles of frie
 
 ## ✨ Features
 
-### 🔍 **Intelligent Research**
-- Enter company name, role, and location
-- Add role description links for targeted insights
-- Upload CV for personalized guidance
-- AI-powered research using OpenAI's latest models
+### 🔍 **Intelligent Research** 
+- **Multi-Source Company Research**: Real-time data from Glassdoor, Levels.fyi, Blind, and more
+- **Job Description Analysis**: Automatic extraction and analysis of role requirements
+- **AI-Powered CV Analysis**: Intelligent skill extraction and gap analysis
+- **Personalized Guidance**: Tailored preparation based on your actual background
+- **Structured AI Responses**: Comprehensive, accurate interview insights
 
 ### 📊 **Structured Results**
 - Interview process overview with timeline
@@ -109,9 +110,14 @@ src/
 
 2. **Environment Configuration**
    ```bash
-   # .env.local
+   # Frontend (.env.local)
    VITE_SUPABASE_URL=your-supabase-url
    VITE_SUPABASE_ANON_KEY=your-supabase-anon-key
+   
+   # Backend (Supabase Edge Functions)
+   OPENAI_API_KEY=your-openai-api-key
+   TAVILY_API_KEY=your-tavily-api-key
+   SUPABASE_SERVICE_ROLE_KEY=your-service-role-key
    ```
 
 3. **Start Development Server**
@@ -139,12 +145,24 @@ All tables include comprehensive Row Level Security (RLS) policies for data prot
 
 ### AI Integration
 
-The app uses OpenAI's API through Supabase Edge Functions:
-- **Model:** GPT-4.1-2025-04-14 for high-quality research
-- **Endpoint:** `/functions/v1/interview-research`
-- **Features:** Intelligent question parsing, fallback logic, CV-based personalization
-- **Security:** API keys stored in Supabase secrets with CORS handling
-- **Error Handling:** Comprehensive error recovery and status tracking
+The app uses a sophisticated multi-AI approach through Supabase Edge Functions:
+
+**OpenAI Integration:**
+- **Models:** GPT-4o for research synthesis, GPT-4o-mini for CV analysis
+- **Structured Output:** Enforced JSON responses with comprehensive error handling
+- **Features:** Company insights, personalized guidance, preparation timelines
+
+**Tavily Expert Integration:**
+- **Real-Time Research:** Multi-source company interview data
+- **Job Analysis:** Advanced extraction from role description URLs
+- **Trusted Sources:** Glassdoor, Levels.fyi, Blind, LinkedIn, Indeed
+- **Advanced Search:** Parallel targeted queries for comprehensive coverage
+
+**System Features:**
+- **Intelligent Parsing:** Structured AI response processing
+- **Graceful Degradation:** Robust fallbacks for all external services
+- **Performance Optimized:** Parallel processing and efficient API usage
+- **Security:** All API keys securely stored in Supabase secrets
 
 ## 🎯 Usage Examples
 
@@ -184,8 +202,17 @@ CV: [Upload your resume for personalized insights]
 
 ## 📖 Documentation
 
+### Core Documentation
 - **[Product Design Document](docs/PRODUCT_DESIGN.md)** - Product vision, features, and user journeys
-- **[Technical Design Document](docs/TECHNICAL_DESIGN.md)** - System architecture and implementation details
+- **[Technical Design Document](docs/TECHNICAL_DESIGN.md)** - Complete system architecture and implementation details
+- **[Development Guide](docs/DEVELOPMENT_GUIDE.md)** - Practical patterns and day-to-day development workflows
+- **[Implementation Changes](docs/IMPLEMENTATION_CHANGES.md)** - Development progress tracking and phase completions
+
+### Quick Start for Developers
+1. **New to the project?** Start with [Product Design](docs/PRODUCT_DESIGN.md) for context
+2. **Setting up development?** Follow [Development Guide - Getting Started](docs/DEVELOPMENT_GUIDE.md#getting-started)
+3. **Understanding the architecture?** See [Technical Design](docs/TECHNICAL_DESIGN.md)
+4. **Daily development?** Use [Development Guide](docs/DEVELOPMENT_GUIDE.md) as your reference
 
 ## 🎨 Design System
 

@@ -7,6 +7,7 @@ import { Badge } from "@/components/ui/badge";
 import { Progress } from "@/components/ui/progress";
 import { Textarea } from "@/components/ui/textarea";
 import { Alert, AlertDescription } from "@/components/ui/alert";
+import { Checkbox } from "@/components/ui/checkbox";
 import { 
   ChevronLeft, 
   ChevronRight, 
@@ -19,7 +20,8 @@ import {
   AlertCircle,
   Loader2,
   Brain,
-  Play
+  Play,
+  Settings
 } from "lucide-react";
 import { searchService } from "@/services/searchService";
 import { useAuth } from "@/hooks/useAuth";
@@ -30,6 +32,24 @@ interface Question {
   stage_name: string;
   question: string;
   answered: boolean;
+}
+
+interface InterviewStage {
+  id: string;
+  name: string;
+  duration: string | null;
+  interviewer: string | null;
+  content: string | null;
+  guidance: string | null;
+  order_index: number;
+  search_id: string;
+  created_at: string;
+  questions: {
+    id: string;
+    question: string;
+    created_at: string;
+  }[];
+  selected: boolean;
 }
 
 interface PracticeSession {
@@ -43,11 +63,12 @@ interface PracticeSession {
 const Practice = () => {
   const navigate = useNavigate();
   const { user } = useAuth();
-  const [searchParams] = useSearchParams();
+  const [searchParams, setSearchParams] = useSearchParams();
   const searchId = searchParams.get('searchId');
-  const stageIds = searchParams.get('stages')?.split(',') || [];
+  const urlStageIds = searchParams.get('stages')?.split(',') || [];
   
   const [questions, setQuestions] = useState<Question[]>([]);
+  const [allStages, setAllStages] = useState<InterviewStage[]>([]);
   const [currentIndex, setCurrentIndex] = useState(0);
   const [answer, setAnswer] = useState("");
   const [isRecording, setIsRecording] = useState(false);
@@ -57,50 +78,88 @@ const Practice = () => {
   const [error, setError] = useState<string | null>(null);
   const [practiceSession, setPracticeSession] = useState<PracticeSession | null>(null);
   const [savedAnswers, setSavedAnswers] = useState<Map<string, boolean>>(new Map());
+  const [showStageSelector, setShowStageSelector] = useState(false);
 
-  // Load practice session when search ID and stages are available
+  // Load search data and set up stages
   useEffect(() => {
-    const loadPracticeSession = async () => {
-      if (!searchId || stageIds.length === 0) return;
+    const loadSearchData = async () => {
+      if (!searchId) return;
 
       setIsLoading(true);
       setError(null);
 
       try {
-        // Load search results to get questions for the selected stages
         const result = await searchService.getSearchResults(searchId);
         
         if (result.success && result.stages) {
-          // Filter questions by selected stages
-          const selectedStages = result.stages.filter(stage => 
-            stageIds.includes(stage.id)
-          );
+          // Transform stages data and add selection state
+          const transformedStages = result.stages
+            .sort((a, b) => a.order_index - b.order_index)
+            .map(stage => ({
+              ...stage,
+              selected: urlStageIds.length > 0 ? urlStageIds.includes(stage.id) : true // Default to all selected if no URL stages
+            }));
+          
+          setAllStages(transformedStages);
+          
+          // Update URL if no stages were specified (select all by default)
+          if (urlStageIds.length === 0) {
+            const allStageIds = transformedStages.map(stage => stage.id);
+            setSearchParams({ searchId, stages: allStageIds.join(',') });
+          }
+        } else {
+          setError(result.error?.message || "Failed to load search data");
+        }
+      } catch (err) {
+        console.error("Error loading search data:", err);
+        setError("An unexpected error occurred while loading search data");
+      } finally {
+        setIsLoading(false);
+      }
+    };
 
-          const allQuestions: Question[] = [];
-          selectedStages.forEach(stage => {
-            stage.questions?.forEach(questionObj => {
-              allQuestions.push({
-                id: questionObj.id,
-                stage_id: stage.id,
-                stage_name: stage.name,
-                question: questionObj.question,
-                answered: false
-              });
+    loadSearchData();
+  }, [searchId]);
+
+  // Load practice session when stages are selected
+  useEffect(() => {
+    const loadPracticeSession = async () => {
+      if (!searchId) return;
+
+      const selectedStages = allStages.filter(stage => stage.selected);
+      if (selectedStages.length === 0) {
+        setQuestions([]);
+        return;
+      }
+
+      setIsLoading(true);
+      setError(null);
+
+      try {
+        const allQuestions: Question[] = [];
+        selectedStages.forEach(stage => {
+          stage.questions?.forEach(questionObj => {
+            allQuestions.push({
+              id: questionObj.id,
+              stage_id: stage.id,
+              stage_name: stage.name,
+              question: questionObj.question,
+              answered: false
             });
           });
+        });
 
-          // Shuffle questions for varied practice
-          const shuffledQuestions = [...allQuestions].sort(() => Math.random() - 0.5);
-          setQuestions(shuffledQuestions);
+        // Shuffle questions for varied practice
+        const shuffledQuestions = [...allQuestions].sort(() => Math.random() - 0.5);
+        setQuestions(shuffledQuestions);
 
-          // Create practice session
+        // Create practice session if questions exist
+        if (shuffledQuestions.length > 0) {
           const sessionResult = await searchService.createPracticeSession(searchId);
           
           if (sessionResult.success && sessionResult.session) {
             setPracticeSession(sessionResult.session);
           }
-        } else {
-          setError(result.error?.message || "Failed to load practice questions");
         }
       } catch (err) {
         console.error("Error loading practice session:", err);
@@ -110,8 +169,10 @@ const Practice = () => {
       }
     };
 
-    loadPracticeSession();
-  }, [searchId, stageIds.join(',')]);
+    if (allStages.length > 0) {
+      loadPracticeSession();
+    }
+  }, [allStages, searchId]);
 
   // Timer logic
   useEffect(() => {
@@ -130,6 +191,21 @@ const Practice = () => {
       setIsTimerRunning(true);
     }
   }, [questions.length]);
+
+  const handleStageToggle = (stageId: string) => {
+    const updatedStages = allStages.map(stage => 
+      stage.id === stageId 
+        ? { ...stage, selected: !stage.selected }
+        : stage
+    );
+    setAllStages(updatedStages);
+    
+    // Update URL with new stage selection
+    const selectedStageIds = updatedStages.filter(stage => stage.selected).map(stage => stage.id);
+    if (selectedStageIds.length > 0) {
+      setSearchParams({ searchId: searchId!, stages: selectedStageIds.join(',') });
+    }
+  };
 
   const handleSaveAnswer = async () => {
     if (!answer.trim() || !practiceSession) return;
@@ -193,9 +269,10 @@ const Practice = () => {
   const currentQuestion = questions[currentIndex];
   const progress = questions.length > 0 ? ((currentIndex + 1) / questions.length) * 100 : 0;
   const answeredCount = questions.filter(q => q.answered).length;
+  const selectedStagesCount = allStages.filter(stage => stage.selected).length;
 
-  // Show default state when no search ID or stages provided
-  if (!searchId || stageIds.length === 0) {
+  // Show default state when no search ID provided
+  if (!searchId) {
     return (
       <div className="min-h-screen bg-background">
         <Navigation />
@@ -206,9 +283,9 @@ const Practice = () => {
                 <div className="flex items-center justify-center mb-4">
                   <Play className="h-12 w-12 text-primary" />
                 </div>
-                <CardTitle>No Practice Session</CardTitle>
+                <CardTitle>No Search Selected</CardTitle>
                 <CardDescription>
-                  Select a search and interview stages to start practicing
+                  Select a search to start practicing interview questions
                 </CardDescription>
               </CardHeader>
               <CardContent>
@@ -293,6 +370,78 @@ const Practice = () => {
     );
   }
 
+  // Show stage selector when no stages are selected or no questions available
+  if (allStages.length > 0 && questions.length === 0) {
+    return (
+      <div className="min-h-screen bg-background">
+        <Navigation />
+        <div className="container mx-auto px-4 py-8">
+          <div className="max-w-4xl mx-auto">
+            <Card className="mb-6">
+              <CardHeader>
+                <CardTitle className="flex items-center gap-2">
+                  <Settings className="h-5 w-5 text-primary" />
+                  Select Interview Stages to Practice
+                </CardTitle>
+                <CardDescription>
+                  Choose which interview rounds you want to practice. You can change this selection anytime.
+                </CardDescription>
+              </CardHeader>
+              <CardContent>
+                <div className="space-y-4">
+                  {allStages.map((stage, index) => (
+                    <div key={stage.id} className="border rounded-lg p-4">
+                      <div className="flex items-start gap-4">
+                        <Checkbox
+                          checked={stage.selected}
+                          onCheckedChange={() => handleStageToggle(stage.id)}
+                          className="mt-1"
+                        />
+                        <div className="flex-1">
+                          <div className="flex items-center gap-3 mb-2">
+                            <Badge variant="outline" className="text-xs">
+                              Stage {index + 1}
+                            </Badge>
+                            <h3 className="font-semibold">{stage.name}</h3>
+                            <span className="text-sm text-muted-foreground">
+                              {stage.questions?.length || 0} questions
+                            </span>
+                          </div>
+                          <p className="text-sm text-muted-foreground">
+                            {stage.content || "Interview stage content"}
+                          </p>
+                        </div>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+                <div className="mt-6 text-center">
+                  <p className="text-sm text-muted-foreground mb-4">
+                    {selectedStagesCount} stage{selectedStagesCount !== 1 ? 's' : ''} selected • {allStages.filter(stage => stage.selected).reduce((acc, stage) => acc + (stage.questions?.length || 0), 0)} total questions
+                  </p>
+                  {selectedStagesCount === 0 ? (
+                    <p className="text-sm text-amber-600">Please select at least one stage to start practicing</p>
+                  ) : (
+                    <Button onClick={() => window.location.reload()}>
+                      Start Practice Session
+                    </Button>
+                  )}
+                </div>
+              </CardContent>
+            </Card>
+            
+            <div className="text-center">
+              <Button variant="outline" onClick={() => navigate(`/dashboard?searchId=${searchId}`)}>
+                <ChevronLeft className="h-4 w-4 mr-2" />
+                Back to Dashboard
+              </Button>
+            </div>
+          </div>
+        </div>
+      </div>
+    );
+  }
+
   if (!currentQuestion) {
     return (
       <div className="min-h-screen bg-background">
@@ -335,10 +484,60 @@ const Practice = () => {
             </p>
           </div>
           <div className="flex items-center gap-2">
-            <Timer className="h-4 w-4 text-muted-foreground" />
-            <span className="text-sm font-mono">{formatTime(timeElapsed)}</span>
+            <Button 
+              variant="outline" 
+              size="sm"
+              onClick={() => setShowStageSelector(!showStageSelector)}
+            >
+              <Settings className="h-4 w-4 mr-2" />
+              Stages
+            </Button>
+            <div className="flex items-center gap-2">
+              <Timer className="h-4 w-4 text-muted-foreground" />
+              <span className="text-sm font-mono">{formatTime(timeElapsed)}</span>
+            </div>
           </div>
         </div>
+
+        {/* Stage Selector Panel */}
+        {showStageSelector && (
+          <Card className="mb-6">
+            <CardHeader>
+              <CardTitle className="text-lg">Interview Stages</CardTitle>
+              <CardDescription>
+                Select which stages you want to practice
+              </CardDescription>
+            </CardHeader>
+            <CardContent>
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                {allStages.map((stage, index) => (
+                  <div key={stage.id} className="flex items-center space-x-3 p-3 border rounded-lg">
+                    <Checkbox
+                      checked={stage.selected}
+                      onCheckedChange={() => handleStageToggle(stage.id)}
+                    />
+                    <div className="flex-1">
+                      <div className="flex items-center gap-2">
+                        <Badge variant="outline" className="text-xs">
+                          Stage {index + 1}
+                        </Badge>
+                        <span className="font-medium">{stage.name}</span>
+                      </div>
+                      <p className="text-xs text-muted-foreground">
+                        {stage.questions?.length || 0} questions
+                      </p>
+                    </div>
+                  </div>
+                ))}
+              </div>
+              <div className="mt-4 text-center">
+                <p className="text-sm text-muted-foreground">
+                  {selectedStagesCount} stage{selectedStagesCount !== 1 ? 's' : ''} selected • {allStages.filter(stage => stage.selected).reduce((acc, stage) => acc + (stage.questions?.length || 0), 0)} total questions
+                </p>
+              </div>
+            </CardContent>
+          </Card>
+        )}
 
         {/* Progress */}
         <Progress value={progress} className="mb-8" />
