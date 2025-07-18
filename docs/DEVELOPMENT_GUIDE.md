@@ -654,71 +654,308 @@ if (!params.company) {
 }
 ```
 
-## Testing Patterns
+## 6. Error Handling
 
-### Component Testing Setup (Future)
+### 6.1 Comprehensive Error Patterns
+
+#### Multi-State Error Management
 ```typescript
-// src/utils/test-utils.tsx
-import { ReactElement } from "react";
-import { render, RenderOptions } from "@testing-library/react";
-import { BrowserRouter } from "react-router-dom";
-import { AuthProvider } from "@/components/AuthProvider";
+// Advanced error handling with contextual recovery
+const [error, setError] = useState<string | null>(null);
+const [isLoading, setIsLoading] = useState(false);
 
-const AllTheProviders = ({ children }: { children: React.ReactNode }) => {
-  return (
-    <BrowserRouter>
-      <AuthProvider>
-        {children}
-      </AuthProvider>
-    </BrowserRouter>
-  );
+// Context-aware error states
+const handleError = (error: any, context: string) => {
+  console.error(`${context} error:`, error);
+  
+  // Contextual error messages
+  const errorMessages = {
+    authentication: "Please sign in to continue",
+    network: "Network connection failed. Please check your internet connection.",
+    processing: "Processing failed. The system is experiencing issues.",
+    validation: "Please check your input and try again",
+    notFound: "The requested resource was not found"
+  };
+  
+  setError(errorMessages[context as keyof typeof errorMessages] || "An unexpected error occurred");
 };
-
-const customRender = (
-  ui: ReactElement,
-  options?: Omit<RenderOptions, 'wrapper'>
-) => render(ui, { wrapper: AllTheProviders, ...options });
-
-export * from "@testing-library/react";
-export { customRender as render };
 ```
 
-### Service Testing Pattern
+#### Graceful Degradation Pattern
 ```typescript
-// src/services/__tests__/searchService.test.ts
-import { searchService } from "../searchService";
+// Progressive fallback for failed operations
+if (searchData?.search_status === 'failed') {
+  return (
+    <Card className="w-full max-w-md mx-auto">
+      <CardHeader className="text-center">
+        <AlertCircle className="h-12 w-12 text-destructive mx-auto mb-4" />
+        <CardTitle>Processing Failed</CardTitle>
+      </CardHeader>
+      <CardContent>
+        <div className="space-y-2">
+          <Button onClick={retryFunction} className="w-full">
+            <RefreshCw className="h-4 w-4 mr-2" />
+            Try Again
+          </Button>
+          <Button variant="outline" onClick={() => navigate('/')} className="w-full">
+            Start New Search
+          </Button>
+        </div>
+      </CardContent>
+    </Card>
+  );
+}
+```
 
-// Mock Supabase
-jest.mock("@/integrations/supabase/client", () => ({
-  supabase: {
-    auth: {
-      getUser: jest.fn()
-    },
-    from: jest.fn(() => ({
-      insert: jest.fn(() => ({
-        select: jest.fn(() => ({
-          single: jest.fn()
-        }))
-      }))
-    }))
+#### State-Specific Error Recovery
+```typescript
+// Different recovery options based on error context
+const getErrorActions = (errorContext: string) => {
+  switch (errorContext) {
+    case 'authentication':
+      return [
+        { label: 'Sign In', action: () => navigate('/auth') }
+      ];
+    case 'search_processing':
+      return [
+        { label: 'View Progress', action: () => navigate(`/dashboard?searchId=${searchId}`) },
+        { label: 'Start New Search', action: () => navigate('/') }
+      ];
+    case 'practice_session':
+      return [
+        { label: 'Back to Dashboard', action: () => navigate(`/dashboard?searchId=${searchId}`) },
+        { label: 'Select Different Stages', action: () => setShowStageSelector(true) }
+      ];
+    default:
+      return [
+        { label: 'Retry', action: retryFunction }
+      ];
   }
-}));
+};
+```
 
-describe("searchService", () => {
-  beforeEach(() => {
-    jest.clearAllMocks();
-  });
+### 6.2 Advanced Loading States
 
-  it("should create search successfully", async () => {
-    // Setup mocks
-    // Run test
-    // Assert results
-  });
+#### Context-Aware Loading Patterns
+```typescript
+// Different loading states for different contexts
+const getLoadingState = (context: string) => {
+  const loadingStates = {
+    search_creation: "Starting your interview research...",
+    search_processing: "Analyzing company data and generating guidance...",
+    cv_analysis: "Parsing your CV with AI...",
+    practice_setup: "Setting up your personalized practice session...",
+    answer_saving: "Saving your practice answer..."
+  };
+  
+  return loadingStates[context as keyof typeof loadingStates] || "Loading...";
+};
+```
 
-  it("should handle authentication errors", async () => {
-    // Test authentication failure
-  });
-});
+## 7. Advanced Workflows
+
+### 7.1 CV Analysis Workflow
+
+#### AI-Powered CV Processing
+```typescript
+// Complete CV analysis workflow
+const analyzeCV = async (cvText: string) => {
+  setIsAnalyzing(true);
+  setError(null);
+  
+  try {
+    // Call AI analysis edge function
+    const result = await searchService.analyzeCV(cvText);
+    
+    if (result.success) {
+      setParsedData(result.parsedData);
+      
+      // Save to database
+      const saveResult = await searchService.saveResume({
+        content: cvText,
+        parsedData: result.parsedData
+      });
+      
+      if (saveResult.success) {
+        setSuccess("CV analyzed and saved successfully!");
+      }
+    } else {
+      setError("Failed to analyze CV. Please try again.");
+    }
+  } catch (err) {
+    setError("An unexpected error occurred during CV analysis");
+  } finally {
+    setIsAnalyzing(false);
+  }
+};
+```
+
+#### Intelligent Data Display
+```typescript
+// Progressive disclosure of parsed CV data
+const renderParsedSection = (title: string, data: any, icon: React.ReactNode) => {
+  if (!data || (Array.isArray(data) && data.length === 0)) return null;
+  
+  return (
+    <Card>
+      <CardHeader>
+        <CardTitle className="flex items-center gap-2">
+          {icon}
+          {title}
+        </CardTitle>
+      </CardHeader>
+      <CardContent>
+        {/* Dynamic rendering based on data type */}
+        {Array.isArray(data) ? (
+          <div className="flex flex-wrap gap-2">
+            {data.map((item, index) => (
+              <Badge key={index} variant="secondary">{item}</Badge>
+            ))}
+          </div>
+        ) : (
+          <p>{data}</p>
+        )}
+      </CardContent>
+    </Card>
+  );
+};
+```
+
+### 7.2 Practice Session Workflow
+
+#### Dynamic Session Management
+```typescript
+// Complete practice session setup and management
+const setupPracticeSession = async () => {
+  setIsLoading(true);
+  
+  try {
+    // Load search results and stages
+    const result = await searchService.getSearchResults(searchId);
+    
+    if (result.success) {
+      // Filter selected stages
+      const selectedStages = result.stages.filter(stage => 
+        urlStageIds.includes(stage.id)
+      );
+      
+      // Aggregate and shuffle questions
+      const allQuestions = selectedStages.flatMap(stage =>
+        stage.questions.map(q => ({
+          ...q,
+          stage_id: stage.id,
+          stage_name: stage.name,
+          answered: false
+        }))
+      );
+      
+      const shuffledQuestions = allQuestions.sort(() => Math.random() - 0.5);
+      setQuestions(shuffledQuestions);
+      
+      // Create practice session
+      const sessionResult = await searchService.createPracticeSession(searchId);
+      if (sessionResult.success) {
+        setPracticeSession(sessionResult.session);
+        setIsTimerRunning(true); // Start timer
+      }
+    }
+  } catch (err) {
+    handleError(err, 'practice_session');
+  } finally {
+    setIsLoading(false);
+  }
+};
+```
+
+#### Real-time Answer Tracking
+```typescript
+// Advanced answer persistence with state synchronization
+const handleAnswerSave = async () => {
+  if (!answer.trim() || !practiceSession) return;
+  
+  const questionId = currentQuestion.id;
+  
+  try {
+    // Save answer with timing data
+    const result = await searchService.savePracticeAnswer({
+      sessionId: practiceSession.id,
+      questionId,
+      textAnswer: answer.trim(),
+      answerTime: timeElapsed
+    });
+    
+    if (result.success) {
+      // Immediate UI feedback
+      setQuestions(prev => prev.map(q => 
+        q.id === questionId ? { ...q, answered: true } : q
+      ));
+      
+      // Track saved answers for progress display
+      setSavedAnswers(prev => new Map(prev).set(questionId, true));
+      
+      // Clear current answer and provide feedback
+      setAnswer("");
+      toast({
+        title: "Answer Saved",
+        description: "Your practice answer has been recorded.",
+        duration: 2000,
+      });
+    }
+  } catch (err) {
+    handleError(err, 'answer_saving');
+  }
+};
+```
+
+## 8. Testing Patterns
+
+### 8.1 Error Scenario Testing
+
+#### Comprehensive Error Testing Checklist
+```typescript
+// Test different error scenarios
+const errorTestScenarios = [
+  {
+    name: "Authentication Failure",
+    setup: () => mockAuthFailure(),
+    expectedBehavior: "Redirect to auth with error message"
+  },
+  {
+    name: "Network Timeout",
+    setup: () => mockNetworkTimeout(),
+    expectedBehavior: "Show retry option with connection error"
+  },
+  {
+    name: "Processing Failure",
+    setup: () => mockProcessingFailure(),
+    expectedBehavior: "Show processing failed state with new search option"
+  },
+  {
+    name: "Invalid Search ID",
+    setup: () => navigateToInvalidSearch(),
+    expectedBehavior: "Show not found state with navigation options"
+  }
+];
+```
+
+### 8.2 Real-time Feature Testing
+
+#### Polling and State Management Testing
+```typescript
+// Test polling behavior and cleanup
+const testPollingScenario = async () => {
+  // Start with pending search
+  mockSearchStatus('pending');
+  
+  // Verify polling starts
+  expect(setInterval).toHaveBeenCalledWith(expect.any(Function), 3000);
+  
+  // Change status to completed
+  mockSearchStatus('completed');
+  
+  // Verify polling stops
+  expect(clearInterval).toHaveBeenCalled();
+};
 ```
 
 ## Debugging Guide

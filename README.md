@@ -143,9 +143,15 @@ The project uses Supabase with the following main tables:
 
 All tables include comprehensive Row Level Security (RLS) policies for data protection and user isolation.
 
-### AI Integration
+### AI Integration - Microservices Architecture
 
-The app uses a sophisticated multi-AI approach through Supabase Edge Functions:
+The app uses a sophisticated microservices architecture with four specialized Edge Functions:
+
+**Microservices Design:**
+- **cv-analysis:** Independent CV parsing and skill extraction
+- **company-research:** Tavily-powered company interview research  
+- **job-analysis:** Job description URL extraction and analysis
+- **interview-research:** Synthesis orchestrator that generates final outputs
 
 **OpenAI Integration:**
 - **Models:** GPT-4o for research synthesis, GPT-4o-mini for CV analysis
@@ -159,7 +165,9 @@ The app uses a sophisticated multi-AI approach through Supabase Edge Functions:
 - **Advanced Search:** Parallel targeted queries for comprehensive coverage
 
 **System Features:**
-- **Intelligent Parsing:** Structured AI response processing
+- **Single Responsibility:** Each function has one clear purpose
+- **Error Isolation:** Component failures don't cascade
+- **Parallel Processing:** Data gathering runs concurrently
 - **Graceful Degradation:** Robust fallbacks for all external services
 - **Performance Optimized:** Parallel processing and efficient API usage
 - **Security:** All API keys securely stored in Supabase secrets

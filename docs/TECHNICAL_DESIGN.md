@@ -186,16 +186,138 @@ erDiagram
 - **RLS Policies:** Users can create/view their own sessions and answers
 - **Indexes:** Primary keys, foreign key relationships, index on created_at
 
-## 3. API Design
+## 3. API Design - Microservices Architecture
 
-### 3.1 Edge Function: interview-research
+### 3.1 Overview
+
+The INT application uses a microservices architecture with four specialized Edge Functions:
+
+```
+┌─────────────────┐    ┌──────────────────┐    ┌─────────────────┐
+│   cv-analysis   │    │ company-research │    │  job-analysis   │
+│                 │    │                  │    │                 │
+│ • CV parsing    │    │ • Tavily search  │    │ • URL extraction│
+│ • AI analysis   │    │ • Company data   │    │ • Requirements  │
+│ • Skills extract│    │ • Culture info   │    │ • Analysis      │
+└─────────────────┘    └──────────────────┘    └─────────────────┘
+        │                       │                       │
+        └───────────────────────┼───────────────────────┘
+                                │
+                    ┌──────────────────┐
+                    │interview-research│
+                    │                  │
+                    │ • Orchestrator   │
+                    │ • AI synthesis   │
+                    │ • Final outputs  │
+                    └──────────────────┘
+```
+
+### 3.2 Edge Function: cv-analysis
+
+#### Endpoint
+`POST /functions/v1/cv-analysis`
+
+#### Purpose
+Independent CV parsing and analysis using AI.
+
+#### Request Schema
+```typescript
+interface CVAnalysisRequest {
+  cvText: string;
+  userId: string;
+}
+```
+
+#### Response Schema
+```typescript
+interface CVAnalysisResponse {
+  success: boolean;
+  parsedData: ProfileParsedData;
+  aiAnalysis: CVAnalysis;
+}
+```
+
+#### Processing Flow
+1. **AI Analysis**: Uses GPT-4o-mini for CV parsing
+2. **Skill Categorization**: Intelligent extraction by type
+3. **Data Transformation**: Converts to UI-compatible format
+4. **Return Results**: Both raw analysis and formatted data
+
+### 3.3 Edge Function: company-research
+
+#### Endpoint
+`POST /functions/v1/company-research`
+
+#### Purpose
+Independent company research using Tavily API.
+
+#### Request Schema
+```typescript
+interface CompanyResearchRequest {
+  company: string;
+  role?: string;
+  country?: string;
+  searchId: string;
+}
+```
+
+#### Response Schema
+```typescript
+interface CompanyResearchResponse {
+  status: "success" | "error";
+  company_insights: CompanyInsights;
+  research_sources: number;
+}
+```
+
+#### Processing Flow
+1. **Multi-Source Search**: 4 parallel Tavily searches
+2. **AI Analysis**: Extract structured company insights
+3. **Return Data**: Company culture, values, interview philosophy
+
+### 3.4 Edge Function: job-analysis
+
+#### Endpoint
+`POST /functions/v1/job-analysis`
+
+#### Purpose
+Extract and analyze job requirements from URLs.
+
+#### Request Schema
+```typescript
+interface JobAnalysisRequest {
+  roleLinks: string[];
+  searchId: string;
+  company?: string;
+  role?: string;
+}
+```
+
+#### Response Schema
+```typescript
+interface JobAnalysisResponse {
+  status: "success" | "error";
+  job_requirements: JobRequirements;
+  urls_processed: number;
+}
+```
+
+#### Processing Flow
+1. **URL Extraction**: Tavily extract from job posting URLs
+2. **AI Analysis**: Extract structured requirements
+3. **Return Data**: Skills, qualifications, responsibilities
+
+### 3.5 Edge Function: interview-research (Orchestrator)
 
 #### Endpoint
 `POST /functions/v1/interview-research`
 
+#### Purpose
+**Synthesis orchestrator** that generates all final user outputs.
+
 #### Request Schema
 ```typescript
-interface ResearchRequest {
+interface SynthesisRequest {
   company: string;
   role?: string;
   country?: string;
@@ -208,53 +330,96 @@ interface ResearchRequest {
 
 #### Response Schema
 ```typescript
-interface ResearchResponse {
+interface SynthesisResponse {
   status: "success" | "error";
   message: string;
-  searchId?: string;
+  insights: {
+    company_data_found: boolean;
+    job_data_found: boolean;
+    cv_analyzed: boolean;
+    stages_created: number;
+    personalized_guidance: PersonalizedGuidance;
+  };
 }
 ```
 
 #### Processing Flow
-1. **Input Validation:** Verify required fields and user authentication
-2. **Status Update:** Set search status to "processing"
-3. **AI Research:** Call OpenAI API with structured prompt
-4. **Data Parsing:** Extract interview stages and questions from AI response
-5. **Database Insert:** Store structured results in database tables
-6. **CV Processing:** Parse and store CV data if provided
-7. **Status Update:** Set search status to "completed"
-8. **Response:** Return success/error status
+1. **Data Gathering**: Call other microservices in parallel
+2. **AI Synthesis**: Generate personalized interview guidance
+3. **Database Storage**: Store stages, questions, guidance
+4. **Status Update**: Mark search as completed
 
-#### AI Prompt Strategy
+#### Final Outputs Generated
+- **Interview Stages**: Company-specific process breakdown
+- **Targeted Questions**: 4-6 questions per stage
+- **Personalized Guidance**: Based on CV analysis
+- **Preparation Timeline**: Week-by-week action plan
+
+### 3.6 Advanced CV Analysis
+
+#### Endpoint
+`POST /functions/v1/cv-analysis`
+
+#### Advanced AI-Powered CV Analysis
+The CV analysis system uses GPT-4o-mini for sophisticated resume parsing with structured output.
+
+#### Request Schema
 ```typescript
-const buildResearchPrompt = (company: string, role?: string, country?: string) => {
-  let prompt = `Research the interview process at ${company}`;
-  if (role) prompt += ` for the ${role} role`;
-  if (country) prompt += ` in ${country}`;
-  
-  prompt += `. Provide a comprehensive analysis including:
-  
-  1. **Interview Process Overview**: Number of stages, typical timeline, interviewer types
-  2. **Detailed Stage Breakdown**: For each stage, provide:
-     - Stage name and duration
-     - Who conducts it (HR, hiring manager, team members, etc.)
-     - What it covers (technical, behavioral, cultural fit, etc.)
-     - Specific preparation guidance
-     - 4-6 likely questions for that stage
-  
-  3. **Company-Specific Insights**: 
-     - Interview culture and style
-     - What they value in candidates
-     - Common rejection reasons
-     - Tips for standing out
-  
-  Format your response as a structured analysis with clear sections.`;
-  
-  return prompt;
-};
+interface CVAnalysisRequest {
+  cvText: string;
+  userId: string;
+}
 ```
 
-### 3.2 Client-Side API Layer
+#### Response Schema
+```typescript
+interface CVAnalysisResponse {
+  success: boolean;
+  parsedData: ProfileParsedData;
+  aiAnalysis: CVAnalysis;
+}
+
+interface CVAnalysis {
+  name?: string;
+  email?: string;
+  phone?: string;
+  location?: string;
+  current_role?: string;
+  experience_years?: number;
+  skills: {
+    technical: string[];
+    soft: string[];
+    certifications: string[];
+  };
+  education: {
+    degree?: string;
+    institution?: string;
+    graduation_year?: number;
+  };
+  experience: {
+    company: string;
+    role: string;
+    duration: string;
+    achievements: string[];
+  }[];
+  projects: string[];
+  key_achievements: string[];
+}
+```
+
+#### Processing Flow
+1. **AI Analysis**: Uses GPT-4o-mini with structured prompts for comprehensive parsing
+2. **Skill Categorization**: Intelligent extraction of technical, programming, frameworks, tools, and soft skills
+3. **Data Transformation**: Converts AI output to Profile component format
+4. **Structured Storage**: Saves both raw AI analysis and formatted data
+
+#### Key Features
+- **15+ Data Fields**: Personal info, professional summary, work history, skills, education, projects, certifications
+- **Intelligent Categorization**: Automatically categorizes skills by type (programming languages, frameworks, tools)
+- **Fallback Handling**: Graceful error recovery with minimal data structures
+- **Format Conversion**: Transforms AI output to UI-compatible format
+
+### 3.3 Client-Side API Layer
 
 #### Search Service
 ```typescript
@@ -272,8 +437,41 @@ export const searchService = {
   // Resume operations
   async saveResume(params: SaveResumeParams): Promise<{ resume?: any; success: boolean; error?: any }>
   async getResume(userId: string): Promise<{ resume?: any; success: boolean; error?: any }>
+  
+  // Advanced CV analysis operations
+  async analyzeCV(cvText: string): Promise<{ success: boolean; parsedData?: any; aiAnalysis?: any; error?: any }>
 }
 ```
+
+#### Advanced CV Analysis Integration
+```typescript
+// Enhanced CV analysis workflow
+const analyzeCV = async (cvText: string) => {
+  try {
+    // Call edge function for AI analysis
+    const response = await supabase.functions.invoke("cv-analysis", {
+      body: { cvText, userId: user.user.id }
+    });
+
+    if (response.error) throw new Error(response.error.message);
+
+    return {
+      success: true,
+      parsedData: response.data.parsedData,  // UI-compatible format
+      aiAnalysis: response.data.aiAnalysis   // Raw AI analysis
+    };
+  } catch (error) {
+    return { error, success: false };
+  }
+};
+```
+
+#### Service Layer Features
+- **Comprehensive Error Handling**: Consistent error patterns across all methods
+- **User Context Management**: Automatic authentication validation
+- **Type-Safe Responses**: Structured response formats for reliability
+- **AI Integration**: Seamless edge function integration for CV analysis
+- **State Synchronization**: Real-time updates with local state management
 
 #### Error Handling Pattern
 ```typescript
@@ -410,7 +608,63 @@ App
 └── Toaster (Global notifications)
 ```
 
-### 5.2 Component Patterns
+### 5.2 Advanced Navigation System
+
+#### Smart Context Management
+The navigation system implements sophisticated state management and context preservation:
+
+```typescript
+// Advanced Navigation Features
+interface NavigationProps {
+  showHistory?: boolean;
+  showSearchSelector?: boolean;
+}
+
+interface SearchHistoryItem {
+  id: string;
+  company: string;
+  role: string | null;
+  country: string | null;
+  search_status: string;
+  created_at: string;
+}
+```
+
+#### Key Features
+- **Real-time Search Selector**: Dropdown for switching between active searches
+- **Context-Aware URL Management**: Preserves search context across all routes
+- **Status-Based History**: Visual indicators for search states (Completed, Processing, Pending, Failed)
+- **Mobile-Responsive Design**: Adaptive layout for desktop and mobile
+- **Progressive Loading**: Lazy-loaded history with error handling
+
+#### Smart URL State Management
+```typescript
+// Context preservation across navigation
+const getNavigationPath = (path: string) => {
+  // For practice page, always include searchId to ensure questions load
+  if (path === "/practice" && currentSearchId) {
+    return `${path}?searchId=${currentSearchId}`;
+  }
+  return currentSearchId ? `${path}?searchId=${currentSearchId}` : path;
+};
+
+// Real-time search switching
+const handleSearchSelection = (searchId: string) => {
+  const currentPath = location.pathname;
+  if (searchId === "none") {
+    navigate(currentPath);
+  } else {
+    navigate(`${currentPath}?searchId=${searchId}`);
+  }
+};
+```
+
+#### Real-time Status Management
+- **Live Status Updates**: Real-time polling integration with navigation
+- **Visual Status Indicators**: Color-coded badges for search states
+- **Contextual Actions**: State-specific navigation options
+
+### 5.3 Component Patterns
 
 #### Error Boundary Pattern
 ```typescript
@@ -685,11 +939,11 @@ body {
 
 ## 8. Real-time Features
 
-### 8.1 Search Status Polling
+### 8.1 Advanced Search Status Polling
 
-#### Polling Strategy
+#### Intelligent Polling Strategy
 ```typescript
-// Dashboard.tsx - Real-time search status updates
+// Enhanced polling with automatic cleanup and progress simulation
 useEffect(() => {
   if (!searchId) return;
 
@@ -700,7 +954,7 @@ useEffect(() => {
   const poll = setInterval(async () => {
     if (searchData?.search_status === 'pending' || searchData?.search_status === 'processing') {
       await loadSearchData();
-      setProgress(prev => Math.min(prev + 5, 95));
+      setProgress(prev => Math.min(prev + 5, 95)); // Progressive updates
     }
   }, 3000); // Poll every 3 seconds
 
@@ -713,9 +967,9 @@ useEffect(() => {
 }, [searchId]);
 ```
 
-#### Progress Indication
+#### Progressive Progress Management
 ```typescript
-// Multi-layered progress system
+// Multi-layered progress system with simulation
 const [progress, setProgress] = useState(0);
 
 // Progress simulation during polling
@@ -730,7 +984,7 @@ useEffect(() => {
 }, [searchData?.search_status]);
 ```
 
-#### Status Messages
+#### Status-Specific Messaging
 ```typescript
 const statusMessages = {
   pending: "Initializing research...",
@@ -739,11 +993,17 @@ const statusMessages = {
 };
 ```
 
-### 8.2 Practice Session Persistence
+#### Key Features
+- **Memory Leak Prevention**: Automatic cleanup of polling intervals
+- **Progressive UI Updates**: Real-time progress simulation
+- **Status-Based Messaging**: Context-aware user feedback
+- **Efficient Resource Management**: Conditional polling based on status
 
-#### Real-time Answer Saving
+### 8.2 Advanced Practice Session Management
+
+#### Real-time Answer Persistence
 ```typescript
-// Practice.tsx - Immediate answer persistence
+// Immediate answer persistence with state updates
 const handleSaveAnswer = async () => {
   if (!answer.trim() || !practiceSession) return;
 
@@ -756,7 +1016,7 @@ const handleSaveAnswer = async () => {
     });
 
     if (result.success) {
-      // Update local state immediately
+      // Update local state immediately for responsive UX
       setQuestions(prev => 
         prev.map(q => 
           q.id === questionId ? { ...q, answered: true } : q
@@ -770,25 +1030,36 @@ const handleSaveAnswer = async () => {
 };
 ```
 
-#### Timer Management
+#### Dynamic Stage Selection with URL Persistence
 ```typescript
-// Persistent timer across questions
-useEffect(() => {
-  let interval: NodeJS.Timeout;
-  if (isTimerRunning) {
-    interval = setInterval(() => {
-      setTimeElapsed(prev => prev + 1);
-    }, 1000);
+// Real-time stage filtering with URL synchronization
+const handleStageToggle = (stageId: string) => {
+  const updatedStages = allStages.map(stage => 
+    stage.id === stageId 
+      ? { ...stage, selected: !stage.selected }
+      : stage
+  );
+  setAllStages(updatedStages);
+  
+  // Update URL with new stage selection
+  const selectedStageIds = updatedStages.filter(stage => stage.selected).map(stage => stage.id);
+  if (selectedStageIds.length > 0) {
+    setSearchParams({ searchId: searchId!, stages: selectedStageIds.join(',') });
   }
-  return () => clearInterval(interval);
-}, [isTimerRunning]);
+};
 ```
+
+#### Session Continuation Features
+- **Question Shuffling**: Randomized question order for varied practice
+- **Progress Tracking**: Real-time answered/unanswered state management
+- **Timer Persistence**: Continuous timing across question navigation
+- **State Recovery**: Session restoration after page reloads
 
 ### 8.3 Navigation Context Preservation
 
-#### Search History Loading
+#### Real-time Search History Loading
 ```typescript
-// Navigation.tsx - Real-time search history
+// Enhanced history management with error handling
 useEffect(() => {
   const loadSearchHistory = async () => {
     if (!user) return;
@@ -810,6 +1081,11 @@ useEffect(() => {
   loadSearchHistory();
 }, [user]);
 ```
+
+#### Context-Aware Navigation
+- **Smart URL Management**: Automatic search context preservation
+- **Progressive Disclosure**: Lazy-loaded components with proper loading states
+- **Error Recovery**: Graceful fallbacks for failed operations
 
 ## 9. Error Handling Strategy
 

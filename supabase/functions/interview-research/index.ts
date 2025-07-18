@@ -6,7 +6,7 @@ const corsHeaders = {
   "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type",
 };
 
-interface ResearchRequest {
+interface SynthesisRequest {
   company: string;
   role?: string;
   country?: string;
@@ -16,7 +16,7 @@ interface ResearchRequest {
   searchId: string;
 }
 
-// Structured interfaces for AI responses
+// Interfaces for final outputs that users see
 interface CompanyInsights {
   name: string;
   industry: string;
@@ -58,235 +58,148 @@ interface AIResearchOutput {
   };
 }
 
-interface CVAnalysis {
-  name?: string;
-  email?: string;
-  phone?: string;
-  location?: string;
-  current_role?: string;
-  experience_years?: number;
-  skills: {
-    technical: string[];
-    soft: string[];
-    certifications: string[];
-  };
-  education: {
-    degree?: string;
-    institution?: string;
-    graduation_year?: number;
-  };
-  experience: {
-    company: string;
-    role: string;
-    duration: string;
-    achievements: string[];
-  }[];
-  projects: string[];
-  key_achievements: string[];
-}
-
-// Tavily API functions
-async function searchCompanyInfo(company: string, role?: string, country?: string): Promise<any> {
-  const tavilyApiKey = Deno.env.get("TAVILY_API_KEY");
-  if (!tavilyApiKey) {
-    console.warn("TAVILY_API_KEY not found, skipping company research");
-    return null;
-  }
-
+// Call other microservices for data gathering
+async function gatherCompanyData(company: string, role?: string, country?: string, searchId?: string) {
   try {
-    // Multiple targeted searches for comprehensive company research
-    const searches = [
-      `${company} interview process ${role || ""} ${country || ""}`,
-      `${company} company culture hiring practices`,
-      `${company} interview questions experience ${role || ""}`,
-      `${company} career page interview tips guidance`
-    ];
-
-    const searchPromises = searches.map(async (query) => {
-      const response = await fetch('https://api.tavily.com/search', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'Authorization': `Bearer ${tavilyApiKey}`,
-        },
-        body: JSON.stringify({
-          query: query.trim(),
-          search_depth: 'advanced',
-          max_results: 10,
-          include_answer: true,
-          include_raw_content: false,
-          include_domains: ['glassdoor.com', 'levels.fyi', 'blind.teamblind.com', 'linkedin.com', 'indeed.com'],
-          time_range: 'year'
-        }),
-      });
-
-      if (response.ok) {
-        return await response.json();
-      }
-      return null;
-    });
-
-    const results = await Promise.all(searchPromises);
-    return results.filter(r => r !== null);
-  } catch (error) {
-    console.error("Error in Tavily company search:", error);
-    return null;
-  }
-}
-
-async function extractJobDescriptions(urls: string[]): Promise<any> {
-  const tavilyApiKey = Deno.env.get("TAVILY_API_KEY");
-  if (!tavilyApiKey || !urls.length) {
-    return null;
-  }
-
-  try {
-    const response = await fetch('https://api.tavily.com/extract', {
+    console.log("Calling company-research function...");
+    
+    const response = await fetch(`${Deno.env.get("SUPABASE_URL")}/functions/v1/company-research`, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
-        'Authorization': `Bearer ${tavilyApiKey}`,
+        'Authorization': `Bearer ${Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")}`,
       },
       body: JSON.stringify({
-        urls: urls.slice(0, 5), // Limit to 5 URLs for efficiency
-        extract_depth: 'advanced',
-        include_images: false
+        company,
+        role,
+        country,
+        searchId
       }),
     });
 
     if (response.ok) {
-      return await response.json();
+      const result = await response.json();
+      return result.company_insights;
     }
+    
+    console.warn("Company research failed, continuing without data");
     return null;
   } catch (error) {
-    console.error("Error in Tavily job description extraction:", error);
+    console.error("Error calling company-research:", error);
     return null;
   }
 }
 
-// Advanced CV analysis using AI
-async function analyzeCV(cvText: string, openaiApiKey: string): Promise<CVAnalysis> {
-  const response = await fetch('https://api.openai.com/v1/chat/completions', {
-    method: 'POST',
-    headers: {
-      'Authorization': `Bearer ${openaiApiKey}`,
-      'Content-Type': 'application/json',
-    },
-    body: JSON.stringify({
-      model: 'gpt-4o-mini', // Using cheaper model for CV analysis
-      messages: [
-        {
-          role: 'system',
-          content: 'You are an expert CV parser and career analyst. Analyze the CV and extract structured information. Return ONLY valid JSON without any markdown formatting or additional text.'
-        },
-        {
-          role: 'user',
-          content: `Analyze this CV and return structured data in this exact JSON format:
-{
-  "name": "string",
-  "email": "string",
-  "phone": "string", 
-  "location": "string",
-  "current_role": "string",
-  "experience_years": number,
-  "skills": {
-    "technical": ["array of technical skills"],
-    "soft": ["array of soft skills"],
-    "certifications": ["array of certifications"]
-  },
-  "education": {
-    "degree": "string",
-    "institution": "string", 
-    "graduation_year": number
-  },
-  "experience": [
-    {
-      "company": "string",
-      "role": "string", 
-      "duration": "string",
-      "achievements": ["array of key achievements"]
-    }
-  ],
-  "projects": ["array of notable projects"],
-  "key_achievements": ["array of major accomplishments"]
-}
-
-CV Text:
-${cvText}`
-        }
-      ],
-      max_tokens: 2000,
-      temperature: 0.3,
-    }),
-  });
-
-  if (!response.ok) {
-    throw new Error(`CV analysis failed: ${response.status}`);
+async function gatherJobData(roleLinks: string[], searchId: string, company?: string, role?: string) {
+  if (!roleLinks || roleLinks.length === 0) {
+    console.log("No role links provided, skipping job analysis");
+    return null;
   }
 
-  const data = await response.json();
-  const analysisText = data.choices[0].message.content;
-  
   try {
-    return JSON.parse(analysisText);
-  } catch (parseError) {
-    console.error("Failed to parse CV analysis JSON:", parseError);
-    // Return minimal fallback structure
-    return {
-      skills: { technical: [], soft: [], certifications: [] },
-      education: {},
-      experience: [],
-      projects: [],
-      key_achievements: []
-    };
+    console.log("Calling job-analysis function...");
+    
+    const response = await fetch(`${Deno.env.get("SUPABASE_URL")}/functions/v1/job-analysis`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")}`,
+      },
+      body: JSON.stringify({
+        roleLinks,
+        searchId,
+        company,
+        role
+      }),
+    });
+
+    if (response.ok) {
+      const result = await response.json();
+      return result.job_requirements;
+    }
+    
+    console.warn("Job analysis failed, continuing without data");
+    return null;
+  } catch (error) {
+    console.error("Error calling job-analysis:", error);
+    return null;
   }
 }
 
-// Main AI research function with structured output
-async function conductAIResearch(
+async function gatherCVData(cv: string, userId: string) {
+  if (!cv) {
+    console.log("No CV provided, skipping CV analysis");
+    return null;
+  }
+
+  try {
+    console.log("Calling cv-analysis function...");
+    
+    const response = await fetch(`${Deno.env.get("SUPABASE_URL")}/functions/v1/cv-analysis`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")}`,
+      },
+      body: JSON.stringify({
+        cvText: cv,
+        userId
+      }),
+    });
+
+    if (response.ok) {
+      const result = await response.json();
+      return result.aiAnalysis;
+    }
+    
+    console.warn("CV analysis failed, continuing without data");
+    return null;
+  } catch (error) {
+    console.error("Error calling cv-analysis:", error);
+    return null;
+  }
+}
+
+// Main AI synthesis function - generates all final user outputs
+async function conductInterviewSynthesis(
   company: string, 
   role: string | undefined, 
   country: string | undefined,
-  companyResearch: any,
-  jobDescriptions: any,
-  cvAnalysis: CVAnalysis | null,
+  companyInsights: any,
+  jobRequirements: any,
+  cvAnalysis: any,
   openaiApiKey: string
 ): Promise<AIResearchOutput> {
   
-  // Build comprehensive research context
-  let researchContext = `Company: ${company}`;
-  if (role) researchContext += `\nRole: ${role}`;
-  if (country) researchContext += `\nCountry: ${country}`;
+  // Build comprehensive context from all gathered data
+  let synthesisContext = `Company: ${company}`;
+  if (role) synthesisContext += `\nRole: ${role}`;
+  if (country) synthesisContext += `\nCountry: ${country}`;
   
-  if (companyResearch) {
-    researchContext += `\n\nCompany Research from Web:\n`;
-    companyResearch.forEach((result: any, index: number) => {
-      if (result.answer) {
-        researchContext += `Research ${index + 1}: ${result.answer}\n`;
-      }
-      if (result.results) {
-        result.results.slice(0, 3).forEach((item: any) => {
-          researchContext += `- ${item.title}: ${item.content}\n`;
-        });
-      }
-    });
+  if (companyInsights) {
+    synthesisContext += `\n\nCompany Insights:\n`;
+    synthesisContext += `Industry: ${companyInsights.industry}\n`;
+    synthesisContext += `Culture: ${companyInsights.culture}\n`;
+    synthesisContext += `Values: ${companyInsights.values?.join(', ')}\n`;
+    synthesisContext += `Interview Philosophy: ${companyInsights.interview_philosophy}\n`;
+    synthesisContext += `Hiring Trends: ${companyInsights.recent_hiring_trends}\n`;
   }
   
-  if (jobDescriptions && jobDescriptions.results) {
-    researchContext += `\n\nJob Description Content:\n`;
-    jobDescriptions.results.forEach((jd: any) => {
-      if (jd.raw_content) {
-        researchContext += `${jd.raw_content.slice(0, 2000)}\n`;
-      }
-    });
+  if (jobRequirements) {
+    synthesisContext += `\n\nJob Requirements:\n`;
+    synthesisContext += `Technical Skills: ${jobRequirements.technical_skills?.join(', ')}\n`;
+    synthesisContext += `Soft Skills: ${jobRequirements.soft_skills?.join(', ')}\n`;
+    synthesisContext += `Experience Level: ${jobRequirements.experience_level}\n`;
+    synthesisContext += `Responsibilities: ${jobRequirements.responsibilities?.join(', ')}\n`;
+    synthesisContext += `Qualifications: ${jobRequirements.qualifications?.join(', ')}\n`;
   }
   
   if (cvAnalysis) {
-    researchContext += `\n\nCandidate Profile:\n`;
-    researchContext += `Current Role: ${cvAnalysis.current_role || 'Not specified'}\n`;
-    researchContext += `Experience: ${cvAnalysis.experience_years || 'Not specified'} years\n`;
-    researchContext += `Technical Skills: ${cvAnalysis.skills.technical.join(', ')}\n`;
-    researchContext += `Key Achievements: ${cvAnalysis.key_achievements.join(', ')}\n`;
+    synthesisContext += `\n\nCandidate Profile:\n`;
+    synthesisContext += `Current Role: ${cvAnalysis.current_role || 'Not specified'}\n`;
+    synthesisContext += `Experience: ${cvAnalysis.experience_years || 'Not specified'} years\n`;
+    synthesisContext += `Technical Skills: ${cvAnalysis.skills?.technical?.join(', ')}\n`;
+    synthesisContext += `Key Achievements: ${cvAnalysis.key_achievements?.join(', ')}\n`;
   }
 
   const response = await fetch('https://api.openai.com/v1/chat/completions', {
@@ -345,7 +258,7 @@ You MUST return ONLY valid JSON in this exact structure - no markdown, no additi
         },
         {
           role: 'user',
-          content: `Based on this research context, create a comprehensive interview preparation guide:\n\n${researchContext}`
+          content: `Based on this research context, create a comprehensive interview preparation guide:\n\n${synthesisContext}`
         }
       ],
       max_tokens: 4000,
@@ -354,19 +267,19 @@ You MUST return ONLY valid JSON in this exact structure - no markdown, no additi
   });
 
   if (!response.ok) {
-    throw new Error(`AI research failed: ${response.status} ${response.statusText}`);
+    throw new Error(`AI synthesis failed: ${response.status} ${response.statusText}`);
   }
 
   const data = await response.json();
-  const researchResult = data.choices[0].message.content;
+  const synthesisResult = data.choices[0].message.content;
   
   try {
-    return JSON.parse(researchResult);
+    return JSON.parse(synthesisResult);
   } catch (parseError) {
-    console.error("Failed to parse AI research JSON:", parseError);
-    console.error("Raw response:", researchResult);
+    console.error("Failed to parse AI synthesis JSON:", parseError);
+    console.error("Raw response:", synthesisResult);
     
-    // Return fallback structure
+    // Return fallback structure with basic interview stages
     return {
       company_insights: {
         name: company,
@@ -387,6 +300,17 @@ You MUST return ONLY valid JSON in this exact structure - no markdown, no additi
           preparation_tips: ["Research company basics", "Prepare STAR stories"],
           common_questions: ["Tell me about yourself", "Why this company?"],
           red_flags_to_avoid: ["Lack of company knowledge", "Unclear career goals"]
+        },
+        {
+          name: "Technical Interview",
+          order_index: 2,
+          duration: "60-90 minutes",
+          interviewer: "Hiring Manager/Team Lead",
+          content: "Technical skills assessment",
+          guidance: "Review technical requirements and practice coding",
+          preparation_tips: ["Practice coding problems", "Review system design"],
+          common_questions: ["Explain your technical approach", "Code this problem"],
+          red_flags_to_avoid: ["Unable to explain reasoning", "Poor coding practices"]
         }
       ],
       personalized_guidance: {
@@ -413,8 +337,7 @@ serve(async (req) => {
   }
 
   try {
-    // Get the request body
-    const { company, role, country, roleLinks, cv, userId, searchId } = await req.json() as ResearchRequest;
+    const { company, role, country, roleLinks, cv, userId, searchId } = await req.json() as SynthesisRequest;
 
     // Create Supabase client
     const supabaseUrl = Deno.env.get("SUPABASE_URL")!;
@@ -433,38 +356,32 @@ serve(async (req) => {
       throw new Error("Missing OpenAI API key");
     }
 
-    console.log("Starting enhanced interview research for", company, role || "");
+    console.log("Starting interview synthesis for", company, role || "");
 
-    // Step 1: Conduct company research using Tavily
-    console.log("Step 1: Conducting company research...");
-    const companyResearch = await searchCompanyInfo(company, role, country);
+    // Step 1: Gather data from microservices (can run in parallel)
+    console.log("Gathering data from microservices...");
+    const [companyInsights, jobRequirements, cvAnalysis] = await Promise.all([
+      gatherCompanyData(company, role, country, searchId),
+      gatherJobData(roleLinks || [], searchId, company, role), 
+      gatherCVData(cv || "", userId)
+    ]);
 
-    // Step 2: Extract job description content using Tavily
-    console.log("Step 2: Extracting job descriptions...");
-    const jobDescriptions = roleLinks && roleLinks.length > 0 
-      ? await extractJobDescriptions(roleLinks) 
-      : null;
-
-    // Step 3: Analyze CV using AI
-    console.log("Step 3: Analyzing CV...");
-    const cvAnalysis = cv ? await analyzeCV(cv, openaiApiKey) : null;
-
-    // Step 4: Conduct comprehensive AI research
-    console.log("Step 4: Conducting AI research...");
-    const aiResearchResult = await conductAIResearch(
+    // Step 2: Conduct AI synthesis to generate final outputs
+    console.log("Conducting AI synthesis...");
+    const synthesisResult = await conductInterviewSynthesis(
       company, 
       role, 
       country, 
-      companyResearch,
-      jobDescriptions,
+      companyInsights,
+      jobRequirements,
       cvAnalysis,
       openaiApiKey
     );
 
-    console.log("Step 5: Storing structured results...");
+    console.log("Storing final results...");
 
-    // Store interview stages and questions
-    for (const stage of aiResearchResult.interview_stages) {
+    // Step 3: Store interview stages and questions in database
+    for (const stage of synthesisResult.interview_stages) {
       // Insert stage
       const { data: stageData, error: stageError } = await supabase
         .from("interview_stages")
@@ -495,7 +412,7 @@ serve(async (req) => {
       if (questionsError) throw questionsError;
     }
 
-    // Save enhanced CV analysis if provided
+    // Step 4: Save CV analysis if provided
     if (cv && cvAnalysis) {
       await supabase
         .from("resumes")
@@ -507,23 +424,24 @@ serve(async (req) => {
         });
     }
 
-    // Update search status to completed
+    // Step 5: Update search status to completed
     await supabase
       .from("searches")
       .update({ search_status: "completed" })
       .eq("id", searchId);
 
-    console.log("Enhanced interview research completed successfully");
+    console.log("Interview synthesis completed successfully");
 
     return new Response(
       JSON.stringify({ 
         status: "success", 
-        message: "Enhanced interview research completed",
+        message: "Interview synthesis completed",
         insights: {
-          company_research_sources: companyResearch ? companyResearch.length : 0,
-          job_descriptions_analyzed: jobDescriptions?.results?.length || 0,
+          company_data_found: !!companyInsights,
+          job_data_found: !!jobRequirements,
           cv_analyzed: !!cvAnalysis,
-          stages_created: aiResearchResult.interview_stages.length
+          stages_created: synthesisResult.interview_stages.length,
+          personalized_guidance: synthesisResult.personalized_guidance
         }
       }),
       {
@@ -533,12 +451,29 @@ serve(async (req) => {
     );
 
   } catch (error) {
-    console.error("Error processing enhanced interview research:", error);
+    console.error("Error processing interview synthesis:", error);
+
+    // Update search status to failed
+    try {
+      const supabaseUrl = Deno.env.get("SUPABASE_URL")!;
+      const supabaseServiceKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
+      const supabase = createClient(supabaseUrl, supabaseServiceKey);
+      
+      const { searchId } = await req.json();
+      if (searchId) {
+        await supabase
+          .from("searches")
+          .update({ search_status: "failed" })
+          .eq("id", searchId);
+      }
+    } catch (updateError) {
+      console.error("Failed to update search status:", updateError);
+    }
 
     return new Response(
       JSON.stringify({ 
         status: "error", 
-        message: error.message || "Failed to process enhanced interview research"
+        message: error.message || "Failed to process interview synthesis"
       }),
       {
         headers: { ...corsHeaders, "Content-Type": "application/json" },
