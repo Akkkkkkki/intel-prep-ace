@@ -8,7 +8,20 @@
     "build": "vite build",
     "build:dev": "vite build --mode development",
     "lint": "eslint .",
-    "preview": "vite preview"
+    "preview": "vite preview",
+    
+    "# Remote Development (Recommended)": "",
+    "functions:deploy": "supabase functions deploy",
+    "functions:deploy-single": "supabase functions deploy",
+    "db:push": "supabase db push",
+    "db:pull": "supabase db pull",
+    
+    "# Local Development (Optional)": "",
+    "functions:serve": "supabase functions serve --env-file .env.local",
+    "functions:serve-debug": "supabase functions serve --env-file .env.local --debug",
+    "supabase:start": "supabase start",
+    "supabase:stop": "supabase stop",
+    "supabase:status": "supabase status"
   },
   "dependencies": {
     "@hookform/resolvers": "^3.9.0",

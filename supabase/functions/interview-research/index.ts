@@ -1,6 +1,7 @@
 import { serve } from "https://deno.land/std@0.177.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.43.2";
 import { SearchLogger } from "../_shared/logger.ts";
+import { RESEARCH_CONFIG } from "../_shared/config.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -339,7 +340,7 @@ async function conductInterviewSynthesis(
       'Content-Type': 'application/json',
     },
     body: JSON.stringify({
-      model: 'gpt-4o',
+      model: RESEARCH_CONFIG.openai.model,
       response_format: { type: "json_object" },
       messages: [
         {
@@ -398,8 +399,8 @@ You MUST return ONLY valid JSON in this exact structure - no markdown, no additi
           content: `Based on this research context, create a comprehensive interview preparation guide:\n\n${synthesisContext}`
         }
       ],
-      max_tokens: 4000,
-      temperature: 0.7,
+      max_tokens: RESEARCH_CONFIG.openai.maxTokens.interviewSynthesis,
+      temperature: RESEARCH_CONFIG.openai.temperature.synthesis,
     }),
   });
 

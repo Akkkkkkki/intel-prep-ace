@@ -110,25 +110,57 @@ src/
 
 2. **Environment Configuration**
    ```bash
-   # Frontend (.env.local)
+   # Create .env.local in project root
+   cp .env.local.example .env.local  # If example exists
+   
+   # Add these variables to .env.local:
    VITE_SUPABASE_URL=your-supabase-url
    VITE_SUPABASE_ANON_KEY=your-supabase-anon-key
-   
-   # Backend (Supabase Edge Functions)
+   SUPABASE_URL=your-supabase-url
+   SUPABASE_SERVICE_ROLE_KEY=your-service-role-key
    OPENAI_API_KEY=your-openai-api-key
    TAVILY_API_KEY=your-tavily-api-key
-   SUPABASE_SERVICE_ROLE_KEY=your-service-role-key
    ```
 
-3. **Start Development Server**
+3. **Start Development**
    ```bash
+   # Start frontend
    npm run dev
+   
+   # Start Supabase (if using local development)
+   npm run supabase:start
+   
+   # Start functions with proper environment loading
+   npm run functions:serve
    ```
 
 4. **Open Browser**
    ```
    http://localhost:5173
    ```
+
+### 🚨 Important: Function Environment Setup
+
+**Critical**: Always use `npm run functions:serve` instead of `supabase functions serve` directly. 
+
+The npm script includes the `--env-file .env.local` flag that loads your API keys. Without this, you'll get placeholder content instead of real AI research.
+
+**Signs of missing environment variables:**
+- Seeing "Research in progress" instead of real company data
+- No entries in `tavily_searches` table
+- Function logs show "🚨 TAVILY_API_KEY missing!"
+
+**Troubleshooting:**
+```bash
+# Check if functions are getting environment variables
+npm run functions:serve-debug
+
+# Verify environment file exists
+ls -la .env.local
+
+# Check Supabase status
+npm run supabase:status
+```
 
 ### Database Setup
 
@@ -312,3 +344,97 @@ This project is licensed under the MIT License - see the [LICENSE](LICENSE) file
 **Built with ❤️ for better interview preparation**
 
 *Ready to ace your next interview? Start your research now!*
+
+## 🚀 Development Approaches
+
+You have **two ways** to develop this app:
+
+### 🌟 **Option 1: Remote-Only Development (Recommended)**
+- ✅ Frontend → Remote Supabase (already configured)
+- ✅ Functions → Deploy to Remote Supabase Edge Functions  
+- ✅ Database → Remote Supabase Database
+- ❌ **No `.env.local` needed**
+- ❌ **No `supabase start` needed**
+
+### ⚙️ **Option 2: Local Development** 
+- ✅ Frontend → Remote Supabase
+- ✅ Functions → Run locally for testing
+- ✅ Database → Local Supabase
+- ⚠️ **Requires `.env.local` for local function testing**
+
+---
+
+## 🌟 **Remote-Only Setup (Recommended)**
+
+### 1. **Configure Environment Variables in Supabase Dashboard**
+   ```
+   Go to: Supabase Dashboard → Project Settings → Edge Functions → Environment Variables
+   
+   Add these secrets:
+   OPENAI_API_KEY=your-openai-api-key
+   TAVILY_API_KEY=your-tavily-api-key
+   SUPABASE_SERVICE_ROLE_KEY=your-service-role-key
+   ```
+
+### 2. **Deploy Functions to Remote**
+   ```bash
+   # Deploy all functions to remote Supabase
+   npm run functions:deploy
+   
+   # Or deploy a single function
+   supabase functions deploy company-research
+   ```
+
+### 3. **Start Frontend Development**
+   ```bash
+   # Only need to run this - connects to remote everything
+   npm run dev
+   ```
+
+### 4. **Push Database Changes**
+   ```bash
+   # Push schema changes to remote database  
+   npm run db:push
+   ```
+
+**✅ Benefits:**
+- No local setup complexity
+- Real production environment
+- No `.env.local` needed
+- Faster development cycle
+
+---
+
+## ⚙️ **Local Development Setup**
+
+Only use this if you need to test function changes locally before deploying.
+
+### 1. **Create .env.local (Required for local functions)**
+   ```bash
+   # Create .env.local in project root
+   VITE_SUPABASE_URL=your-supabase-url
+   VITE_SUPABASE_ANON_KEY=your-supabase-anon-key
+   SUPABASE_URL=your-supabase-url
+   SUPABASE_SERVICE_ROLE_KEY=your-service-role-key
+   OPENAI_API_KEY=your-openai-api-key
+   TAVILY_API_KEY=your-tavily-api-key
+   ```
+
+### 2. **Start Local Services**
+   ```bash
+   # Start frontend
+   npm run dev
+   
+   # Start local Supabase (optional)
+   npm run supabase:start
+   
+   # Start functions locally with environment loading
+   npm run functions:serve
+   ```
+
+**⚠️ Only needed when:**
+- Testing function changes before deployment
+- Debugging function logic locally
+- Working offline
+
+---

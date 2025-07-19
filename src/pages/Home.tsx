@@ -43,7 +43,8 @@ const Home = () => {
     setError(null);
     
     try {
-      const result = await searchService.createSearch({
+      // Step 1: Create search record and show progress dialog immediately
+      const result = await searchService.createSearchRecord({
         company: formData.company.trim(),
         role: formData.role.trim() || undefined,
         country: formData.country.trim() || undefined,
@@ -52,13 +53,11 @@ const Home = () => {
       });
 
       if (result.success && result.searchId) {
-        // Set up progress dialog
+        // Immediately show progress dialog
         setCurrentSearchId(result.searchId);
-        setSearchStatus('processing');
+        setSearchStatus('pending');
         setShowProgressDialog(true);
-        
-        // Start polling for status updates
-        startStatusPolling(result.searchId);
+        setIsLoading(false); // Stop the button loading state
         
         // Show success toast notification
         toast({
@@ -66,6 +65,19 @@ const Home = () => {
           description: "Your AI research is now running. Track progress in the dialog or check back in a few minutes.",
           duration: 3000,
         });
+        
+        // Step 2: Start the actual processing asynchronously
+        searchService.startProcessing(result.searchId, {
+          company: formData.company.trim(),
+          role: formData.role.trim() || undefined,
+          country: formData.country.trim() || undefined,
+          roleLinks: formData.roleLinks.trim() || undefined,
+          cv: formData.cv.trim() || undefined
+        });
+        
+        // Step 3: Start polling for status updates
+        startStatusPolling(result.searchId);
+        
       } else {
         const errorMessage = result.error?.message || "Failed to create search. Please try again.";
         setError(errorMessage);
@@ -75,6 +87,7 @@ const Home = () => {
           variant: "destructive",
           duration: 5000,
         });
+        setIsLoading(false);
       }
     } catch (err) {
       console.error("Error submitting search:", err);
@@ -86,31 +99,70 @@ const Home = () => {
         variant: "destructive",
         duration: 5000,
       });
-    } finally {
       setIsLoading(false);
     }
   };
 
   const startStatusPolling = (searchId: string) => {
-    const pollInterval = setInterval(async () => {
+    // Start with more frequent polling for better responsiveness
+    let pollCount = 0;
+    
+    const poll = async () => {
       try {
         const status = await searchService.getSearchStatus(searchId);
         if (status) {
-          setSearchStatus(status.search_status as 'pending' | 'processing' | 'completed' | 'failed');
+          const newStatus = status.search_status as 'pending' | 'processing' | 'completed' | 'failed';
+          setSearchStatus(newStatus);
           
-          if (status.search_status === 'completed' || status.search_status === 'failed') {
-            clearInterval(pollInterval);
+          // Stop polling when complete or failed
+          if (newStatus === 'completed' || newStatus === 'failed') {
+            return false; // Stop polling
           }
         }
+        pollCount++;
+        return true; // Continue polling
       } catch (error) {
         console.error('Error polling search status:', error);
+        return true; // Continue polling despite errors
       }
-    }, 3000); // Poll every 3 seconds
+    };
 
-    // Clear interval after 10 minutes to prevent infinite polling
-    setTimeout(() => {
-      clearInterval(pollInterval);
-    }, 600000);
+    // Initial poll immediately
+    poll().then(shouldContinue => {
+      if (!shouldContinue) return;
+
+      // Adaptive polling: start fast, then slow down
+      const pollInterval = setInterval(async () => {
+        const shouldContinue = await poll();
+        if (!shouldContinue) {
+          clearInterval(pollInterval);
+          return;
+        }
+
+        // After 20 polls (1 minute), switch to less frequent polling
+        if (pollCount > 20) {
+          clearInterval(pollInterval);
+          
+          // Switch to 5-second intervals for long-running searches
+          const slowPollInterval = setInterval(async () => {
+            const shouldContinue = await poll();
+            if (!shouldContinue) {
+              clearInterval(slowPollInterval);
+            }
+          }, 5000);
+
+          // Clear slow polling after 10 minutes total
+          setTimeout(() => {
+            clearInterval(slowPollInterval);
+          }, 540000); // 9 more minutes (10 total)
+        }
+      }, 2000); // Poll every 2 seconds initially
+
+      // Clear fast polling after 2 minutes
+      setTimeout(() => {
+        clearInterval(pollInterval);
+      }, 120000);
+    });
   };
 
   const handleCloseProgressDialog = () => {

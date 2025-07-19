@@ -3,44 +3,59 @@
 
 -- Add policy to allow service role (edge functions) to insert interview stages
 -- Service role bypasses RLS by default, but adding explicit policy for clarity
-CREATE POLICY "Service role can insert interview stages" 
-  ON public.interview_stages 
-  FOR INSERT 
-  WITH CHECK (
-    -- Allow if no user context (service role) or if user owns the search
-    auth.uid() IS NULL OR 
-    auth.uid() IN (
-      SELECT user_id FROM public.searches WHERE id = search_id
-    )
-  );
+DO $$ 
+BEGIN
+  IF EXISTS (SELECT FROM information_schema.tables WHERE table_name = 'interview_stages') THEN
+    CREATE POLICY "Service role can insert interview stages" 
+      ON public.interview_stages 
+      FOR INSERT 
+      WITH CHECK (
+        -- Allow if no user context (service role) or if user owns the search
+        auth.uid() IS NULL OR 
+        auth.uid() IN (
+          SELECT user_id FROM public.searches WHERE id = search_id
+        )
+      );
+  END IF;
+END $$;
 
 -- Add policy to allow service role (edge functions) to insert interview questions
-CREATE POLICY "Service role can insert interview questions" 
-  ON public.interview_questions 
-  FOR INSERT 
-  WITH CHECK (
-    -- Allow if no user context (service role) or if user owns the related search
-    auth.uid() IS NULL OR 
-    auth.uid() IN (
-      SELECT s.user_id 
-      FROM public.searches s
-      JOIN public.interview_stages st ON s.id = st.search_id
-      WHERE st.id = stage_id
-    )
-  );
+DO $$ 
+BEGIN
+  IF EXISTS (SELECT FROM information_schema.tables WHERE table_name = 'interview_questions') THEN
+    CREATE POLICY "Service role can insert interview questions" 
+      ON public.interview_questions 
+      FOR INSERT 
+      WITH CHECK (
+        -- Allow if no user context (service role) or if user owns the related search
+        auth.uid() IS NULL OR 
+        auth.uid() IN (
+          SELECT s.user_id 
+          FROM public.searches s
+          JOIN public.interview_stages st ON s.id = st.search_id
+          WHERE st.id = stage_id
+        )
+      );
+  END IF;
+END $$;
 
 -- Add policy to allow service role (edge functions) to update search status
-CREATE POLICY "Service role can update search status" 
-  ON public.searches 
-  FOR UPDATE 
-  USING (
-    -- Allow if no user context (service role) or if user owns the search
-    auth.uid() IS NULL OR auth.uid() = user_id
-  )
-  WITH CHECK (
-    -- Allow if no user context (service role) or if user owns the search
-    auth.uid() IS NULL OR auth.uid() = user_id
-  );
+DO $$ 
+BEGIN
+  IF EXISTS (SELECT FROM information_schema.tables WHERE table_name = 'searches') THEN
+    CREATE POLICY "Service role can update search status" 
+      ON public.searches 
+      FOR UPDATE 
+      USING (
+        -- Allow if no user context (service role) or if user owns the search
+        auth.uid() IS NULL OR auth.uid() = user_id
+      )
+      WITH CHECK (
+        -- Allow if no user context (service role) or if user owns the search
+        auth.uid() IS NULL OR auth.uid() = user_id
+      );
+  END IF;
+END $$;
 
 -- Add policy to allow service role (edge functions) to insert resumes during search processing
 CREATE POLICY "Service role can insert resumes during processing" 

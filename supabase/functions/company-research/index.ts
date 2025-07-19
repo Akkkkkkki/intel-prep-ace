@@ -3,6 +3,7 @@ import { createClient } from "https://esm.sh/@supabase/supabase-js@2.43.2";
 import { searchTavily, extractTavily, extractInterviewReviewUrls, TavilySearchRequest } from "../_shared/tavily-client.ts";
 import { callOpenAI, parseJsonResponse, OpenAIRequest } from "../_shared/openai-client.ts";
 import { SearchLogger } from "../_shared/logger.ts";
+import { RESEARCH_CONFIG, getAllSearchQueries } from "../_shared/config.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -72,56 +73,29 @@ async function searchCompanyInfo(
 ): Promise<any> {
   const tavilyApiKey = Deno.env.get("TAVILY_API_KEY");
   if (!tavilyApiKey) {
-    const errorMsg = "TAVILY_API_KEY not found, skipping company research";
-    logger?.log('CONFIG_ERROR', 'API_KEY_MISSING', { company, role }, errorMsg);
-    console.warn(errorMsg);
+    const errorMsg = "TAVILY_API_KEY not found in environment variables. Ensure you're running functions with: supabase functions serve --env-file .env.local";
+    logger?.log('CONFIG_ERROR', 'API_KEY_MISSING', { 
+      company, 
+      role, 
+      availableEnvVars: Object.keys(Deno.env.toObject()).filter(key => key.includes('API') || key.includes('KEY')).sort(),
+      supabaseEnvVars: Object.keys(Deno.env.toObject()).filter(key => key.includes('SUPABASE')).sort()
+    }, errorMsg);
+    console.warn("🚨 TAVILY_API_KEY missing!");
+    console.warn("💡 Solution: Run functions with environment file:");
+    console.warn("   npm run functions:serve");
+    console.warn("   or: supabase functions serve --env-file .env.local");
+    console.warn("📋 Available environment variables:");
+    console.warn(Object.keys(Deno.env.toObject()).filter(key => key.includes('API') || key.includes('KEY')).sort());
     return null;
   }
+
+  logger?.log('CONFIG_SUCCESS', 'API_KEY_FOUND', { company, role, country, tavilyKeyLength: tavilyApiKey.length });
 
   logger?.log('SEARCH_START', 'COMPANY_INFO', { company, role, country });
 
   try {
-    // Get company ticker symbol for Blind searches
-    const getCompanyTicker = (companyName: string): string => {
-      const tickerMap: Record<string, string> = {
-        'amazon': 'AMZN', 'microsoft': 'MSFT', 'google': 'GOOGL', 'alphabet': 'GOOGL',
-        'meta': 'META', 'facebook': 'META', 'apple': 'AAPL', 'netflix': 'NFLX',
-        'tesla': 'TSLA', 'nvidia': 'NVDA', 'salesforce': 'CRM', 'oracle': 'ORCL',
-        'uber': 'UBER', 'airbnb': 'ABNB', 'stripe': 'STRIPE', 'snowflake': 'SNOW',
-        'databricks': 'DATABRICKS', 'palantir': 'PLTR', 'coinbase': 'COIN'
-      };
-      return tickerMap[companyName.toLowerCase()] || companyName.toUpperCase();
-    };
-
-    const companyTicker = getCompanyTicker(company);
-    
-    // Step 1: Discovery searches to collect URLs
-    const searchQueries = [
-      // Glassdoor interview pages - specific URL slugs for better targeting
-      `${company} ${role || ""} Interview Questions & Answers site:glassdoor.com/Interview`,
-      `${company} interview process ${role || ""} ${country || ""} 2024 2025 site:glassdoor.com`,
-      `${company} interview experience ${role || ""} recent 2024 site:glassdoor.com`,
-      
-      // Blind boards - use ticker symbols and "interview" keyword
-      `${companyTicker} interview ${role || ""} site:blind.teamblind.com`,
-      `interview ${companyTicker} ${role || ""} experience site:blind.teamblind.com`,
-      
-      // 1point3acres for tech interviews (especially for Chinese tech companies)
-      `${company} ${role || ""} interview 面试 site:1point3acres.com`,
-      `${company} interview experience ${role || ""} site:1point3acres.com`,
-      
-      // Multi-platform interview insights with recent focus
-      `${company} ${role || ""} interview 2024 site:levels.fyi`,
-      `${company} ${role || ""} interview process site:leetcode.com`,
-      
-      // Reddit and forum discussions - recent focus
-      `${company} ${role || ""} interview experience 2024 site:reddit.com`,
-      `${company} ${role || ""} interview questions recent site:reddit.com`,
-      
-      // Company culture and values - current practices
-      `${company} interview process how many rounds stages`,
-      `${company} what do they look for hiring criteria recent`
-    ];
+    // Get search queries from centralized config
+    const searchQueries = getAllSearchQueries(company, role, country);
 
     logger?.logPhaseTransition('INIT', 'DISCOVERY', { queriesCount: searchQueries.length });
     console.log("Phase 1: Discovering interview review URLs...");
@@ -133,12 +107,12 @@ async function searchCompanyInfo(
       
       const request: TavilySearchRequest = {
         query: query.trim(),
-        searchDepth: 'advanced',
-        maxResults: 10,
+        searchDepth: RESEARCH_CONFIG.tavily.searchDepth,
+        maxResults: RESEARCH_CONFIG.tavily.maxResults.discovery,
         includeAnswer: true,
-        includeRawContent: true,
-        includeDomains: ['glassdoor.com', 'levels.fyi', 'blind.teamblind.com', 'linkedin.com', 'indeed.com', '1point3acres.com', 'reddit.com', 'interviewing.io', 'leetcode.com'],
-        timeRange: 'year'
+        includeRawContent: RESEARCH_CONFIG.tavily.includeRawContent,
+        includeDomains: RESEARCH_CONFIG.search.allowedDomains,
+        timeRange: RESEARCH_CONFIG.tavily.timeRange
       };
       
       try {
@@ -173,7 +147,7 @@ async function searchCompanyInfo(
     let extractedContent: any[] = [];
     if (interviewUrls.length > 0) {
       const startTime = Date.now();
-      const urlsToExtract = interviewUrls.slice(0, 15); // Limit to 15 URLs to manage costs
+      const urlsToExtract = interviewUrls.slice(0, RESEARCH_CONFIG.tavily.maxResults.extraction);
       logger?.log('TAVILY_EXTRACT_START', 'EXTRACTION', { urlCount: urlsToExtract.length, urls: urlsToExtract });
       
       try {
@@ -248,7 +222,7 @@ async function analyzeCompanyData(
             researchContext += `- ${item.title}: ${item.content}\n`;
             
             if (item.raw_content) {
-              researchContext += `SOURCE-START\n${item.url}\n${item.raw_content.slice(0, 4500)}\nSOURCE-END\n\n`;
+              researchContext += `SOURCE-START\n${item.url}\n${item.raw_content.slice(0, RESEARCH_CONFIG.content.maxContentLength.sourceSnippet)}\nSOURCE-END\n\n`;
             }
           });
         }
@@ -260,14 +234,14 @@ async function analyzeCompanyData(
       researchContext += `\n\nDeep Extracted Interview Reviews:\n`;
       researchData.extracted_content.forEach((extract: any, index: number) => {
         if (extract.content && extract.url) {
-          researchContext += `DEEP-EXTRACT-START\n${extract.url}\n${extract.content.slice(0, 6000)}\nDEEP-EXTRACT-END\n\n`;
+          researchContext += `DEEP-EXTRACT-START\n${extract.url}\n${extract.content.slice(0, RESEARCH_CONFIG.content.maxContentLength.deepExtract)}\nDEEP-EXTRACT-END\n\n`;
         }
       });
     }
   }
 
   const openaiRequest: OpenAIRequest = {
-    model: 'gpt-4o',
+    model: RESEARCH_CONFIG.openai.model,
     systemPrompt: `You are an expert company research analyst specializing in interview preparation. Based on the provided research data from Glassdoor, Blind, 1point3acres, Reddit, LinkedIn, and other sources, extract comprehensive company insights with focus on recent interview trends (2024-2025).
 
 Focus on REAL candidate experiences from the raw content provided:
@@ -336,9 +310,9 @@ You MUST return ONLY valid JSON in this exact structure:
   }
 }`,
     prompt: `Analyze this company research data and extract structured insights based on REAL candidate experiences:\n\n${researchContext}`,
-    maxTokens: 2000,
-    temperature: 0.3,
-    useJsonMode: true
+    maxTokens: RESEARCH_CONFIG.openai.maxTokens.companyAnalysis,
+    temperature: RESEARCH_CONFIG.openai.temperature.analysis,
+    useJsonMode: RESEARCH_CONFIG.openai.useJsonMode
   };
 
   logger?.logDataProcessing('CONTEXT_BUILDING', { 

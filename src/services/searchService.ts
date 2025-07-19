@@ -9,7 +9,8 @@ interface CreateSearchParams {
 }
 
 export const searchService = {
-  async createSearch({ company, role, country, roleLinks, cv }: CreateSearchParams) {
+  // Step 1: Create search record only (fast, synchronous)
+  async createSearchRecord({ company, role, country, roleLinks, cv }: CreateSearchParams) {
     try {
       // Get the current user first
       const { data: { user }, error: userError } = await supabase.auth.getUser();
@@ -18,7 +19,7 @@ export const searchService = {
         throw new Error("No authenticated user");
       }
 
-      // 1. Create a search record with user_id
+      // Create a search record with user_id (status: pending)
       const { data: searchData, error: searchError } = await supabase
         .from("searches")
         .insert({
@@ -34,29 +35,79 @@ export const searchService = {
 
       if (searchError) throw searchError;
 
-      const searchId = searchData.id;
-      const userId = user.id;
+      return { searchId: searchData.id, success: true };
+    } catch (error) {
+      console.error("Error creating search record:", error);
+      return { error, success: false };
+    }
+  },
 
-      // 2. Call the edge function to process the search
-      const processResponse = await supabase.functions.invoke("interview-research", {
+  // Step 2: Start processing asynchronously (can take minutes)
+  async startProcessing(searchId: string, { company, role, country, roleLinks, cv }: CreateSearchParams) {
+    try {
+      // Get the current user
+      const { data: { user }, error: userError } = await supabase.auth.getUser();
+      if (userError || !user) {
+        throw new Error("No authenticated user");
+      }
+
+      // Update search status to processing
+      await supabase
+        .from("searches")
+        .update({ search_status: "processing" })
+        .eq("id", searchId);
+
+      // Call the edge function to process the search (async, no await)
+      supabase.functions.invoke("interview-research", {
         body: {
           company,
           role,
           country,
           roleLinks: roleLinks ? roleLinks.split("\n").filter(link => link.trim()) : [],
           cv,
-          userId: userId,
+          userId: user.id,
           searchId,
         }
+      }).then(response => {
+        if (response.error) {
+          console.error("Edge function error:", response.error);
+          // Update status to failed if edge function fails
+          supabase
+            .from("searches")
+            .update({ search_status: "failed" })
+            .eq("id", searchId);
+        }
+        // If successful, the edge function will update status to "completed"
+      }).catch(error => {
+        console.error("Error calling edge function:", error);
+        // Update status to failed if call fails
+        supabase
+          .from("searches")
+          .update({ search_status: "failed" })
+          .eq("id", searchId);
       });
 
-      if (processResponse.error) throw new Error(processResponse.error.message);
-
-      return { searchId, success: true };
+      return { success: true };
     } catch (error) {
-      console.error("Error creating search:", error);
+      console.error("Error starting processing:", error);
+      
+      // Update status to failed
+      await supabase
+        .from("searches")
+        .update({ search_status: "failed" })
+        .eq("id", searchId);
+      
       return { error, success: false };
     }
+  },
+
+  // Legacy method for backward compatibility
+  async createSearch(params: CreateSearchParams) {
+    const recordResult = await this.createSearchRecord(params);
+    if (!recordResult.success) return recordResult;
+    
+    const processResult = await this.startProcessing(recordResult.searchId!, params);
+    return { searchId: recordResult.searchId, success: processResult.success, error: processResult.error };
   },
 
   async getSearchStatus(searchId: string) {

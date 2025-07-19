@@ -36,19 +36,70 @@ open http://localhost:8080
 # .env.local (create this file)
 VITE_SUPABASE_URL=your-supabase-project-url
 VITE_SUPABASE_ANON_KEY=your-supabase-anon-key
+
+# For Supabase functions (same .env.local file)
+SUPABASE_URL=your-supabase-project-url
+SUPABASE_SERVICE_ROLE_KEY=your-supabase-service-role-key
+OPENAI_API_KEY=your-openai-api-key
+TAVILY_API_KEY=your-tavily-api-key
 ```
 
 ### Useful Development Commands
 ```bash
-# Code quality
-npm run lint                    # ESLint check
-npm run build                   # Test production build
+# Frontend development
+npm run dev                    # Start Vite dev server
+npm run lint                   # ESLint check
+npm run build                  # Test production build
 
-# Supabase (if using local development)
-npx supabase start             # Start local Supabase
-npx supabase db reset          # Reset database
+# Supabase development
+npm run supabase:start         # Start local Supabase
+npm run supabase:stop          # Stop local Supabase
+npm run supabase:status        # Check Supabase status
+
+# Supabase functions (IMPORTANT: Use these for proper env loading)
+npm run functions:serve        # Serve functions with .env.local
+npm run functions:serve-debug  # Serve functions with debug output
+
+# Legacy commands (avoid - missing env vars)
+npx supabase functions serve  # ❌ Missing environment variables
+npx supabase start            # ✅ OK for database only
+
+# Database schema
 npx supabase gen types typescript --local > src/integrations/supabase/types.ts
 ```
+
+### 🚨 Common Issue: Missing API Keys in Functions
+
+**Problem**: Your functions return fallback content like "Research in progress" instead of real AI research.
+
+**Cause**: Environment variables from `.env.local` are not loaded when using `supabase functions serve` directly.
+
+**Solution**: Always use the npm scripts that include the `--env-file` flag:
+```bash
+# ✅ Correct way (loads .env.local)
+npm run functions:serve
+
+# ❌ Wrong way (missing env vars)
+supabase functions serve
+```
+
+**How to verify**: Check function logs for these messages:
+- ✅ "CONFIG_SUCCESS: API_KEY_FOUND" 
+- ❌ "🚨 TAVILY_API_KEY missing!"
+
+### Function Logging
+
+Functions now create comprehensive logs in two places:
+
+1. **Database Logging**: Check these tables in Supabase dashboard:
+   - `tavily_searches` - All Tavily API calls
+   - `openai_calls` - All OpenAI API calls  
+   - `function_executions` - Complete function runs
+
+2. **File Logging**: Check `supabase/functions/*/logs/` directories:
+   - Detailed execution logs with timestamps
+   - Phase-by-phase progress tracking
+   - Error diagnostics and API response data
 
 ## Coding Patterns
 
@@ -1059,7 +1110,52 @@ console.log("API call result:", {
 3. Update service methods
 4. Test RLS policies
 
-### Enhanced Logging Infrastructure
+### Configuration Management
+
+The interview research system uses a centralized configuration file for easy customization.
+
+### Configuration File Structure
+
+**Main Config**: `supabase/functions/_shared/config.ts`
+
+Key configurable parameters:
+- **OpenAI Model**: Choose between `gpt-4o`, `gpt-4o-mini` for cost optimization
+- **Tavily Search Limits**: Adjust number of searches and extractions 
+- **Content Length Limits**: Control how much content to process
+- **Allowed Domains**: Specify which sites to search
+- **Company Tickers**: Map company names to stock symbols for Blind searches
+- **Performance Timeouts**: Set API call timeout limits
+
+### Quick Configuration Examples
+
+**Cost Optimization** (reduce API costs):
+```typescript
+// In config.ts, modify these values:
+RESEARCH_CONFIG.tavily.maxResults.discovery = 5;        // Reduced from 10
+RESEARCH_CONFIG.tavily.maxResults.extraction = 8;       // Reduced from 15  
+RESEARCH_CONFIG.openai.model = 'gpt-4o-mini';          // Cheaper model
+```
+
+**Premium Quality** (maximum research depth):
+```typescript
+RESEARCH_CONFIG.tavily.maxResults.discovery = 15;       // Increased from 10
+RESEARCH_CONFIG.tavily.maxResults.extraction = 20;      // Increased from 15
+RESEARCH_CONFIG.content.maxContentLength.deepExtract = 8000; // More content
+```
+
+**Add New Companies**:
+```typescript
+RESEARCH_CONFIG.search.companyTickers['my-company'] = 'MYCO';
+```
+
+**Add New Domains**:
+```typescript
+RESEARCH_CONFIG.search.allowedDomains.push('my-site.com');
+```
+
+See `supabase/functions/_shared/config.example.ts` for complete examples.
+
+## Enhanced Logging Infrastructure
 The application now includes comprehensive logging for real candidate experience research and debugging.
 
 #### New Logging System Architecture
@@ -1241,3 +1337,53 @@ const { data } = await supabase
 ---
 
 This development guide should be your go-to reference for daily development tasks. Update it as new patterns emerge or when adding new features. 
+
+### Quick Test: Verify Tavily Integration
+
+After setting up your environment, test that Tavily is working:
+
+1. **Start Functions Properly**:
+   ```bash
+   npm run functions:serve
+   ```
+
+2. **Check Console Output**: Look for these logs when starting:
+   ```
+   ✅ Functions serve started at http://localhost:54321/functions/v1/
+   📡 Environment file loaded: .env.local
+   ```
+
+3. **Run a Test Search**: Create a search in the app and watch function logs for:
+   ```
+   ✅ CONFIG_SUCCESS: API_KEY_FOUND
+   🔍 TAVILY_SEARCH_START: Starting company research
+   📊 DISCOVERY_COMPLETE: Found X results
+   ```
+
+4. **Verify Database Logging**: Check Supabase dashboard tables:
+   - `tavily_searches`: Should have new entries with actual API responses
+   - `function_executions`: Should show successful completions
+   - `searches`: Should have status "completed" instead of "failed"
+
+5. **Check File Logs**: Look for detailed logs in:
+   ```bash
+   ls -la supabase/functions/*/logs/
+   ```
+
+**If you see fallback content**: You'll see logs like:
+```
+❌ 🚨 TAVILY_API_KEY missing!
+💡 Solution: Run functions with environment file
+```
+
+**Troubleshooting**:
+```bash
+# Verify environment variables are loaded
+npm run functions:serve-debug
+
+# Check if .env.local exists and contains TAVILY_API_KEY
+grep TAVILY .env.local
+
+# Restart with clean environment
+npm run functions:serve
+``` 

@@ -1,4 +1,5 @@
 // Shared OpenAI client utility for consistent API interactions across functions
+import { RESEARCH_CONFIG } from "./config.ts";
 
 export interface OpenAIRequest {
   model: string;
@@ -34,8 +35,8 @@ export async function callOpenAI(
     temperature: request.temperature || 0.3,
   };
 
-  // Add JSON mode if requested
-  if (request.useJsonMode) {
+  // Add JSON mode if requested (default from config)
+  if (request.useJsonMode ?? RESEARCH_CONFIG.openai.useJsonMode) {
     body.response_format = { type: "json_object" };
   }
 

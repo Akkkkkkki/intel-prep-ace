@@ -1,4 +1,5 @@
 // Shared Tavily client utility for consistent API interactions
+import { RESEARCH_CONFIG } from "./config.ts";
 
 export interface TavilySearchRequest {
   query: string;
@@ -237,18 +238,20 @@ export function extractInterviewReviewUrls(searchResults: TavilySearchResult[]):
   searchResults.forEach(result => {
     if (result.results) {
       result.results.forEach(item => {
-        // Focus on interview review sites
-        if (item.url.includes('glassdoor.com/Interview') ||
-            item.url.includes('blind.teamblind.com') ||
-            item.url.includes('1point3acres.com') ||
-            item.url.includes('levels.fyi') ||
-            (item.url.includes('reddit.com') && (item.title.toLowerCase().includes('interview') || item.content.toLowerCase().includes('interview')))) {
+        // Use configured patterns to identify interview content
+        const isInterviewUrl = RESEARCH_CONFIG.content.interviewUrlPatterns.some(pattern => 
+          item.url.includes(pattern) || 
+          item.title.toLowerCase().includes(pattern.toLowerCase()) ||
+          item.content.toLowerCase().includes(pattern.toLowerCase())
+        );
+        
+        if (isInterviewUrl) {
           urls.push(item.url);
         }
       });
     }
   });
   
-  // Remove duplicates and limit to top 20 URLs
-  return Array.from(new Set(urls)).slice(0, 20);
+  // Remove duplicates and limit by configuration
+  return Array.from(new Set(urls)).slice(0, RESEARCH_CONFIG.tavily.maxResults.extraction);
 }
