@@ -101,15 +101,38 @@ const Profile = () => {
       }
 
       try {
+        console.log("Loading profile for user:", user.id);
         const result = await searchService.getResume(user.id);
         
+        console.log("Resume loading result:", {
+          success: result.success,
+          hasResume: !!result.resume,
+          error: result.error?.message
+        });
+        
         if (result.success && result.resume) {
-          setCvText(result.resume.content);
+          console.log("Resume data structure:", {
+            hasContent: !!result.resume.content,
+            hasParsedData: !!result.resume.parsed_data,
+            contentLength: result.resume.content?.length || 0
+          });
+          
+          setCvText(result.resume.content || "");
+          
+          // Use JSONB parsed_data for now until enhanced columns are available
           if (result.resume.parsed_data) {
+            console.log("Using JSONB parsed_data");
             setParsedData(result.resume.parsed_data as ParsedData);
+            console.log("Parsed data loaded from JSONB:", Object.keys(result.resume.parsed_data));
+          } else {
+            console.log("No parsed data found in resume");
           }
+        } else if (!result.success && result.error) {
+          console.error("Error loading resume:", result.error);
+          setError(`Failed to load profile: ${result.error.message}`);
+        } else {
+          console.log("No resume found for user - this is normal for new users");
         }
-        // If no resume found, that's OK - user can create one
         
         setIsLoading(false);
       } catch (err) {
@@ -339,6 +362,25 @@ const Profile = () => {
                             <p className="text-xs text-muted-foreground mt-1">Professional Summary</p>
                           </div>
                         )}
+
+                        {/* Work History */}
+                        {parsedData.professional.workHistory && parsedData.professional.workHistory.length > 0 && (
+                          <div className="mt-6 pt-4 border-t">
+                            <h4 className="font-medium mb-3">Work History</h4>
+                            <div className="space-y-4">
+                              {parsedData.professional.workHistory.map((job, index) => (
+                                <div key={index} className="border-l-2 border-primary/20 pl-4">
+                                  <p className="font-medium">{job.title}</p>
+                                  <p className="text-sm text-muted-foreground">{job.company}</p>
+                                  <p className="text-xs text-muted-foreground">{job.duration}</p>
+                                  {job.description && (
+                                    <p className="text-sm mt-1">{job.description}</p>
+                                  )}
+                                </div>
+                              ))}
+                            </div>
+                          </div>
+                        )}
                       </CardContent>
                     </Card>
                   )}
@@ -456,6 +498,52 @@ const Profile = () => {
                             )}
                           </div>
                         ))}
+                      </CardContent>
+                    </Card>
+                  )}
+
+                  {/* Achievements */}
+                  {parsedData.achievements && parsedData.achievements.length > 0 && (
+                    <Card>
+                      <CardHeader>
+                        <CardTitle className="flex items-center gap-2">
+                          <Star className="h-5 w-5 text-primary" />
+                          Key Achievements
+                        </CardTitle>
+                      </CardHeader>
+                      <CardContent>
+                        <ul className="space-y-2">
+                          {parsedData.achievements.map((achievement, index) => (
+                            <li key={index} className="flex items-start gap-2">
+                              <Star className="h-4 w-4 text-yellow-500 mt-0.5 flex-shrink-0" />
+                              <span className="text-sm">{achievement}</span>
+                            </li>
+                          ))}
+                        </ul>
+                      </CardContent>
+                    </Card>
+                  )}
+
+                  {/* Languages */}
+                  {parsedData.languages && parsedData.languages.length > 0 && (
+                    <Card>
+                      <CardHeader>
+                        <CardTitle className="flex items-center gap-2">
+                          <Globe className="h-5 w-5 text-primary" />
+                          Languages
+                        </CardTitle>
+                      </CardHeader>
+                      <CardContent>
+                        <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                          {parsedData.languages.map((lang, index) => (
+                            <div key={index} className="flex items-center justify-between p-2 bg-muted rounded">
+                              <span className="font-medium">{lang.language}</span>
+                              {lang.proficiency && (
+                                <Badge variant="outline" className="text-xs">{lang.proficiency}</Badge>
+                              )}
+                            </div>
+                          ))}
+                        </div>
                       </CardContent>
                     </Card>
                   )}

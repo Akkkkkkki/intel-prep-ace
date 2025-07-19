@@ -1,5 +1,6 @@
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2.7.1';
+import { Logger } from '../_shared/logging.ts';
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
@@ -90,24 +91,24 @@ interface ProfileParsedData {
   lastUpdated: string;
 }
 
-// AI-powered CV analysis using OpenAI
-async function analyzeCV(cvText: string, openaiApiKey: string): Promise<CVAnalysis> {
-  const response = await fetch('https://api.openai.com/v1/chat/completions', {
-    method: 'POST',
-    headers: {
-      'Authorization': `Bearer ${openaiApiKey}`,
-      'Content-Type': 'application/json',
-    },
-    body: JSON.stringify({
-      model: 'gpt-4o-mini',
-      messages: [
-        {
-          role: 'system',
-          content: 'You are an expert CV parser and career analyst. Analyze the CV and extract structured information. Return ONLY valid JSON without any markdown formatting or additional text.'
-        },
-        {
-          role: 'user',
-          content: `Analyze this CV and return structured data in this exact JSON format:
+// AI-powered CV analysis using OpenAI with comprehensive logging
+async function analyzeCV(
+  cvText: string, 
+  openaiApiKey: string,
+  logger: Logger,
+  searchId: string,
+  userId: string
+): Promise<CVAnalysis> {
+  const requestPayload = {
+    model: 'gpt-4o-mini',
+    messages: [
+      {
+        role: 'system',
+        content: 'You are an expert CV parser and career analyst. Analyze the CV and extract structured information. Return ONLY valid JSON without any markdown formatting or additional text.'
+      },
+      {
+        role: 'user',
+        content: `Analyze this CV and return structured data in this exact JSON format:
 {
   "name": "string",
   "email": "string",
@@ -139,12 +140,30 @@ async function analyzeCV(cvText: string, openaiApiKey: string): Promise<CVAnalys
 
 CV Text:
 ${cvText}`
-        }
-      ],
-      max_tokens: 2000,
-      temperature: 0.3,
-    }),
-  });
+      }
+    ],
+    max_tokens: 2000,
+    temperature: 0.3,
+  };
+
+  // Use the logger's wrapped fetch for automatic logging
+  const response = await logger.fetchOpenAI(
+    'https://api.openai.com/v1/chat/completions',
+    {
+      method: 'POST',
+      headers: {
+        'Authorization': `Bearer ${openaiApiKey}`,
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify(requestPayload),
+    },
+    {
+      searchId,
+      userId,
+      functionName: 'cv-analysis',
+      model: 'gpt-4o-mini'
+    }
+  );
 
   if (!response.ok) {
     throw new Error(`CV analysis failed: ${response.status}`);
@@ -152,25 +171,23 @@ ${cvText}`
 
   const data = await response.json();
   const analysisText = data.choices[0].message.content;
-  
+
   try {
     return JSON.parse(analysisText);
   } catch (parseError) {
     console.error("Failed to parse CV analysis JSON:", parseError);
-    // Return complete fallback structure with all required fields
+    console.error("Raw response:", analysisText);
+    
+    // Return fallback structure
     return {
-      name: undefined,
-      email: undefined,
-      phone: undefined,
-      location: undefined,
-      current_role: undefined,
-      experience_years: undefined,
+      name: "Unable to parse",
+      email: "",
+      phone: "",
+      location: "",
+      current_role: "",
+      experience_years: 0,
       skills: { technical: [], soft: [], certifications: [] },
-      education: {
-        degree: undefined,
-        institution: undefined,
-        graduation_year: undefined
-      },
+      education: { degree: "", institution: "", graduation_year: new Date().getFullYear() },
       experience: [],
       projects: [],
       key_achievements: []
@@ -267,12 +284,34 @@ serve(async (req) => {
     return new Response(null, { headers: corsHeaders });
   }
 
+  const executionStartTime = Date.now();
+  let logger: Logger;
+  let executionId: string | null = null;
+
   try {
     const { cvText, userId } = await req.json() as CVAnalysisRequest;
 
     if (!cvText || !userId) {
       throw new Error("Missing required parameters: cvText and userId");
     }
+
+    // Create Supabase client and logger
+    const supabaseUrl = Deno.env.get("SUPABASE_URL")!;
+    const supabaseServiceKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
+    const supabase = createClient(supabaseUrl, supabaseServiceKey);
+    logger = new Logger(supabase);
+
+    // Generate a searchId for this execution (or get from request if available)
+    const searchId = crypto.randomUUID();
+
+    // Log function execution start
+    executionId = await logger.logFunctionExecution({
+      searchId,
+      userId,
+      functionName: 'cv-analysis',
+      rawInputs: { cvText: cvText.substring(0, 500) + '...', userId }, // Truncate for storage
+      status: 'running'
+    });
 
     // Get OpenAI API key
     const openaiApiKey = Deno.env.get("OPENAI_API_KEY");
@@ -282,11 +321,21 @@ serve(async (req) => {
 
     console.log("Starting AI CV analysis for user:", userId);
 
-    // Analyze CV using AI
-    const aiAnalysis = await analyzeCV(cvText, openaiApiKey);
+    // Analyze CV using AI with logging
+    const aiAnalysis = await analyzeCV(cvText, openaiApiKey, logger, searchId, userId);
     
     // Convert to Profile component format
     const profileData = convertToProfileFormat(aiAnalysis);
+
+    // Log successful completion with raw and processed outputs
+    if (executionId) {
+      await logger.updateFunctionExecution(executionId, {
+        rawOutputs: { aiAnalysis },
+        processedOutputs: { profileData },
+        status: 'completed',
+        executionTimeMs: Date.now() - executionStartTime
+      });
+    }
 
     console.log("CV analysis completed successfully");
 
@@ -305,10 +354,19 @@ serve(async (req) => {
   } catch (error) {
     console.error("CV analysis error:", error);
     
+    // Log failed execution
+    if (logger && executionId) {
+      await logger.updateFunctionExecution(executionId, {
+        status: 'failed',
+        executionTimeMs: Date.now() - executionStartTime,
+        errorMessage: error instanceof Error ? error.message : 'Unknown error'
+      });
+    }
+    
     return new Response(
       JSON.stringify({
         success: false,
-        error: error.message || "Failed to analyze CV"
+        error: error instanceof Error ? error.message : "Failed to analyze CV"
       }),
       {
         headers: { ...corsHeaders, 'Content-Type': 'application/json' },

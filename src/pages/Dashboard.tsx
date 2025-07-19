@@ -1,5 +1,5 @@
 import { useState, useEffect } from "react";
-import { useNavigate, useSearchParams } from "react-router-dom";
+import { useNavigate, useSearchParams, useParams } from "react-router-dom";
 import Navigation from "@/components/Navigation";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
@@ -55,12 +55,16 @@ interface SearchData {
 const Dashboard = () => {
   const navigate = useNavigate();
   const [searchParams] = useSearchParams();
-  const searchId = searchParams.get('searchId');
+  const { searchId: urlSearchId } = useParams();
+  
+  // Support both URL params and search params for backward compatibility
+  const searchId = urlSearchId || searchParams.get('searchId');
   
   const [isLoading, setIsLoading] = useState(false);
   const [progress, setProgress] = useState(0);
   const [stages, setStages] = useState<InterviewStage[]>([]);
   const [searchData, setSearchData] = useState<SearchData | null>(null);
+  const [enhancedQuestions, setEnhancedQuestions] = useState<any[]>([]);
   const [error, setError] = useState<string | null>(null);
   const [pollingInterval, setPollingInterval] = useState<NodeJS.Timeout | null>(null);
 
@@ -84,6 +88,11 @@ const Dashboard = () => {
           }));
         
         setStages(transformedStages);
+        
+        // Load enhanced questions if available
+        if (result.enhancedQuestions) {
+          setEnhancedQuestions(result.enhancedQuestions as any[]);
+        }
         
         // If search is completed, stop loading
         if (result.search.search_status === 'completed') {
@@ -163,7 +172,23 @@ const Dashboard = () => {
   const getSelectedQuestions = () => {
     return stages
       .filter(stage => stage.selected)
-      .reduce((acc, stage) => acc + (stage.questions?.length || 0), 0);
+      .reduce((acc, stage) => acc + getStageQuestionCount(stage), 0);
+  };
+
+  const getStageQuestionCount = (stage: any) => {
+    const basicCount = stage.questions?.length || 0;
+    const enhancedCount = getEnhancedQuestionCount(stage);
+    return basicCount + enhancedCount;
+  };
+
+  const getEnhancedQuestionCount = (stage: any) => {
+    if (!enhancedQuestions) return 0;
+    
+    const enhancedBank = enhancedQuestions.find((bank: any) => 
+      bank.interview_stage === stage.name
+    );
+    
+    return enhancedBank?.total_questions || 0;
   };
 
   const startPractice = () => {
@@ -399,7 +424,7 @@ const Dashboard = () => {
                         </div>
                         <div>
                           <h4 className="text-sm font-medium mb-2">
-                            Likely Questions ({stage.questions?.length || 0})
+                            Practice Questions ({getStageQuestionCount(stage)})
                           </h4>
                           <ul className="text-sm text-muted-foreground space-y-1">
                             {stage.questions?.slice(0, 2).map((questionObj, qIndex) => (
@@ -410,10 +435,15 @@ const Dashboard = () => {
                             ))}
                             {(stage.questions?.length || 0) > 2 && (
                               <li className="text-xs text-muted-foreground">
-                                +{(stage.questions?.length || 0) - 2} more questions
+                                +{(stage.questions?.length || 0) - 2} more basic questions
                               </li>
                             )}
-                            {(!stage.questions || stage.questions.length === 0) && (
+                            {getEnhancedQuestionCount(stage) > 0 && (
+                              <li className="text-xs text-primary font-medium">
+                                + {getEnhancedQuestionCount(stage)} enhanced questions (behavioral, technical, situational, etc.)
+                              </li>
+                            )}
+                            {(!stage.questions || stage.questions.length === 0) && getEnhancedQuestionCount(stage) === 0 && (
                               <li className="text-xs text-muted-foreground italic">
                                 Questions will be generated during research
                               </li>

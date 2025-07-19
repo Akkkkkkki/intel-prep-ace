@@ -26,7 +26,7 @@
 ┌─────────────────┐    ┌──────────────────┐    ┌─────────────────┐
 │   React Client  │    │  Supabase Stack  │    │  OpenAI API     │
 │                 │    │                  │    │                 │
-│ • React + Vite  │◄──►│ • PostgreSQL     │    │ • GPT-4.1       │
+│ • React + Vite  │◄──►│ • PostgreSQL     │    │ • GPT-4o        │
 │ • TypeScript    │    │ • Auth           │◄──►│ • Deep Research │
 │ • Tailwind CSS  │    │ • Edge Functions │    │ • Completions   │
 │ • shadcn/ui     │    │ • Storage        │    │                 │
@@ -50,7 +50,8 @@
 - **File Storage:** Supabase Storage for CV uploads (future)
 
 #### External Services
-- **AI Research:** OpenAI API (GPT-4.1-2025-04-14)
+- **AI Research:** OpenAI API (GPT-4o) with JSON mode for reliable parsing
+- **Internet Research:** Tavily API for real candidate experience extraction
 - **Deployment:** Lovable hosting platform
 
 ### 1.3 Key Design Decisions
@@ -77,6 +78,12 @@ erDiagram
     searches ||--o{ interview_stages : contains
     searches ||--o{ resumes : includes
     searches ||--o{ practice_sessions : generates
+    searches ||--o{ cv_job_comparisons : has
+    searches ||--o{ enhanced_question_banks : contains
+    searches ||--o{ interview_experiences : stores
+    searches ||--o{ tavily_searches : logs
+    searches ||--o{ openai_calls : tracks
+    searches ||--o{ function_executions : monitors
     interview_stages ||--o{ interview_questions : has
     practice_sessions ||--o{ practice_answers : records
     interview_questions ||--o{ practice_answers : answers
@@ -98,6 +105,10 @@ erDiagram
         text country
         text role_links
         text search_status
+        jsonb cv_job_comparison
+        jsonb enhanced_question_bank
+        text[] preparation_priorities
+        float overall_fit_score
         timestamp created_at
     }
     
@@ -129,6 +140,109 @@ erDiagram
         timestamp created_at
     }
     
+    cv_job_comparisons {
+        uuid id PK
+        uuid search_id FK
+        uuid user_id FK
+        jsonb skill_gap_analysis
+        jsonb experience_gap_analysis
+        jsonb personalized_story_bank
+        jsonb interview_prep_strategy
+        float overall_fit_score
+        text[] preparation_priorities
+        timestamp created_at
+        timestamp updated_at
+    }
+    
+    enhanced_question_banks {
+        uuid id PK
+        uuid search_id FK
+        uuid user_id FK
+        text interview_stage
+        jsonb behavioral_questions
+        jsonb technical_questions
+        jsonb situational_questions
+        jsonb company_specific_questions
+        jsonb role_specific_questions
+        jsonb experience_based_questions
+        jsonb cultural_fit_questions
+        integer total_questions
+        jsonb generation_context
+        timestamp created_at
+        timestamp updated_at
+    }
+    
+    interview_experiences {
+        uuid id PK
+        uuid search_id FK
+        text company_name
+        text role_title
+        text experience_type
+        text difficulty_rating
+        text process_duration
+        text experience_text
+        text interviewer_feedback
+        text[] questions_asked
+        text source_url
+        text source_platform
+        timestamp created_at
+    }
+    
+    tavily_searches {
+        uuid id PK
+        uuid search_id FK
+        uuid user_id FK
+        text api_type
+        text endpoint_url
+        jsonb request_payload
+        text query_text
+        text search_depth
+        integer max_results
+        text[] include_domains
+        jsonb response_payload
+        integer response_status
+        integer results_count
+        integer request_duration_ms
+        integer credits_used
+        text error_message
+        timestamp created_at
+    }
+    
+    openai_calls {
+        uuid id PK
+        uuid search_id FK
+        uuid user_id FK
+        text function_name
+        text model
+        text endpoint_url
+        jsonb request_payload
+        jsonb response_payload
+        integer response_status
+        integer prompt_tokens
+        integer completion_tokens
+        integer total_tokens
+        integer request_duration_ms
+        text error_message
+        timestamp created_at
+    }
+    
+    function_executions {
+        uuid id PK
+        uuid search_id FK
+        uuid user_id FK
+        text function_name
+        jsonb raw_inputs
+        jsonb raw_outputs
+        jsonb processed_outputs
+        text status
+        integer execution_time_ms
+        text error_message
+        uuid[] tavily_call_ids
+        uuid[] openai_call_ids
+        timestamp created_at
+        timestamp updated_at
+    }
+    
     practice_sessions {
         uuid id PK
         uuid user_id FK
@@ -150,41 +264,77 @@ erDiagram
 
 ### 2.2 Table Specifications
 
-#### profiles
+#### Core Workflow Tables
+
+##### profiles
 - **Purpose:** Store user profile information with auto-creation trigger
 - **RLS Policies:** Users can view/update their own profile only
 - **Indexes:** Primary key on id, unique on email
-- **Auto-creation:** Triggered on `auth.users` insert
 
-#### searches
-- **Purpose:** Track user search queries and results
+##### searches
+- **Purpose:** Track user search queries and aggregated results
 - **Status Flow:** `pending` → `processing` → `completed` | `failed`
+- **Enhanced Data:** Stores final processed results from all functions
 - **RLS Policies:** Users can create/view their own searches only
-- **Indexes:** Primary key on id, foreign key on user_id, index on created_at
 
-#### interview_stages
-- **Purpose:** Store structured interview process stages
-- **Ordering:** Uses `order_index` for consistent stage sequence
-- **RLS Policies:** Users can view stages for their searches only
-- **Indexes:** Primary key on id, foreign key on search_id, index on order_index
-
-#### interview_questions
-- **Purpose:** Store questions for each interview stage
+##### interview_stages & interview_questions
+- **Purpose:** Store structured interview process and questions
 - **Generation:** AI-generated during search processing
-- **RLS Policies:** Users can view questions for their interview stages only
-- **Indexes:** Primary key on id, foreign key on stage_id
+- **RLS Policies:** Users can view data for their searches only
 
-#### resumes
-- **Purpose:** Store user CVs and parsed metadata
-- **Parsing:** JSONB field for structured data extraction
-- **RLS Policies:** Users can create/view their own resumes only
-- **Indexes:** Primary key on id, foreign keys on user_id and search_id
+##### resumes
+- **Purpose:** Store user CVs with parsed data (cleaned up - no redundant columns)
+- **Structure:** Only essential fields: id, user_id, search_id, content, parsed_data, created_at
+- **Parsing:** All structured data stored in `parsed_data` JSONB field
 
-#### practice_sessions & practice_answers
-- **Purpose:** Track practice sessions and user responses
-- **Timing:** Records answer duration for performance tracking
-- **RLS Policies:** Users can create/view their own sessions and answers
-- **Indexes:** Primary keys, foreign key relationships, index on created_at
+#### Enhanced Data Tables
+
+##### cv_job_comparisons
+- **Purpose:** Store detailed CV-job fit analysis results
+- **Data:** Skill gaps, experience analysis, preparation strategies
+
+##### enhanced_question_banks
+- **Purpose:** Store categorized interview questions by stage
+- **Categories:** Behavioral, technical, situational, company-specific, etc.
+
+##### interview_experiences
+- **Purpose:** Store research data from interview experiences
+- **Sources:** Glassdoor, Reddit, LinkedIn, etc.
+
+#### Comprehensive Logging Tables
+
+##### tavily_searches
+- **Purpose:** Log ALL Tavily API calls (search/extract) with full audit trail
+- **Data:** Complete request/response payloads, performance metrics, cost tracking
+- **Benefits:** Cost monitoring, debugging, reprocessing capability
+
+##### openai_calls
+- **Purpose:** Log ALL OpenAI API calls with token usage tracking
+- **Data:** Full request/response, token counts, cost calculation
+- **Benefits:** Cost optimization, performance monitoring
+
+##### function_executions
+- **Purpose:** Log complete function executions with raw and processed data
+- **Data:** Raw inputs, raw API responses, final processed outputs
+- **Benefits:** Complete audit trail, debugging, data reprocessing
+
+### 2.3 Data Flow Architecture
+
+```
+User Input → Function Execution → Multiple API Calls → Raw Data Storage → Processed Results
+     ↓              ↓                    ↓                   ↓                 ↓
+  searches    function_executions   tavily_searches    raw_outputs      final tables
+                                   openai_calls       raw_inputs       (cv_job_comparisons,
+                                                                       enhanced_question_banks)
+```
+
+### 2.4 Logging & Audit Trail Strategy
+
+- **Complete API Coverage:** Every external API call logged
+- **Cost Tracking:** Real-time monitoring of Tavily credits and OpenAI tokens
+- **Performance Metrics:** Response times, success rates, error tracking
+- **Data Preservation:** Raw API responses stored for reprocessing
+- **Debugging Support:** Full request/response history for troubleshooting
 
 ## 3. API Design - Microservices Architecture
 
@@ -238,18 +388,18 @@ interface CVAnalysisResponse {
 ```
 
 #### Processing Flow
-1. **AI Analysis**: Uses GPT-4o-mini for CV parsing
+1. **AI Analysis**: Uses LLM for CV parsing
 2. **Skill Categorization**: Intelligent extraction by type
 3. **Data Transformation**: Converts to UI-compatible format
 4. **Return Results**: Both raw analysis and formatted data
 
-### 3.3 Edge Function: company-research
+### 3.3 Edge Function: company-research (Enhanced)
 
 #### Endpoint
 `POST /functions/v1/company-research`
 
 #### Purpose
-Independent company research using Tavily API.
+**Real candidate experience research** using enhanced Tavily API integration with deep content extraction.
 
 #### Request Schema
 ```typescript
@@ -267,13 +417,37 @@ interface CompanyResearchResponse {
   status: "success" | "error";
   company_insights: CompanyInsights;
   research_sources: number;
+  extracted_urls: number;
+  deep_extracts: number;
 }
 ```
 
-#### Processing Flow
-1. **Multi-Source Search**: 4 parallel Tavily searches
-2. **AI Analysis**: Extract structured company insights
-3. **Return Data**: Company culture, values, interview philosophy
+#### Enhanced Processing Flow (Retrieve-then-Extract Pattern)
+
+**Phase 1: Discovery Searches (12 targeted queries)**
+- Glassdoor interview pages: `site:glassdoor.com/Interview`
+- Blind boards with company tickers: `AMZN interview`, `GOOGL interview`  
+- 1point3acres for international: `interview 面试`
+- Role-specific recent searches: `2024 2025`
+- Raw content enabled: `include_raw_content: true`
+
+**Phase 2: Deep Content Extraction**
+- Extract URLs from discovery results
+- Tavily `/extract` API for full page content (4-6k chars vs 200 char snippets)
+- Focus on interview review sites (Glassdoor, Blind, 1point3acres, Reddit)
+- Process up to 15 URLs for comprehensive data
+
+**Phase 3: AI Analysis with Real Data**
+- JSON mode: `response_format: { type: "json_object" }`
+- Extract interview stages from actual candidate reports
+- Process raw content from interview reviews
+- Generate structured insights based on real experiences
+
+#### Key Improvements
+- **Real Data**: Actual candidate experiences vs LLM speculation
+- **Better Targeting**: Company ticker symbols, role-specific queries
+- **Deeper Analysis**: 4-6k characters per source vs previous 200 chars
+- **Reliability**: JSON mode prevents parsing errors
 
 ### 3.4 Edge Function: job-analysis
 
@@ -1086,6 +1260,144 @@ useEffect(() => {
 - **Smart URL Management**: Automatic search context preservation
 - **Progressive Disclosure**: Lazy-loaded components with proper loading states
 - **Error Recovery**: Graceful fallbacks for failed operations
+
+## 8.5 Enhanced Logging and Debugging Infrastructure
+
+### 8.1 Comprehensive Search Execution Logging
+
+#### SearchLogger Architecture
+```typescript
+// supabase/functions/_shared/logger.ts
+export class SearchLogger {
+  constructor(searchId: string, functionName: string, userId?: string);
+  
+  // Core logging methods
+  log(operation: string, phase: string, data?: any, error?: string, duration?: number): void;
+  logTavilySearch(query: string, phase: string, requestPayload: any, response?: any): void;
+  logTavilyExtract(urls: string[], phase: string, response?: any): void;
+  logOpenAI(operation: string, phase: string, request?: any, response?: any): void;
+  
+  // Phase transition tracking
+  logPhaseTransition(fromPhase: string, toPhase: string, data?: any): void;
+  logDataProcessing(operation: string, inputData: any, outputData?: any): void;
+  
+  // Function lifecycle
+  logFunctionEnd(success: boolean, result?: any, error?: string): void;
+  saveToFile(): Promise<void>;
+}
+```
+
+#### Shared Utilities for Consistency
+
+**Tavily Client** (`supabase/functions/_shared/tavily-client.ts`)
+- Unified Tavily API interactions (search + extract)
+- Automatic logging integration
+- Error handling and retry logic
+- Credit usage tracking
+
+**OpenAI Client** (`supabase/functions/_shared/openai-client.ts`)
+- Consistent OpenAI API calls with JSON mode
+- Automatic error parsing
+- Response validation
+- Token usage tracking
+
+### 8.2 Debugging with Log Files
+
+#### Log File Structure
+```bash
+supabase/functions/logs/
+├── company-research_<searchId>_<timestamp>.json     # Detailed execution log
+├── company-research_<searchId>_summary.json        # Quick summary
+├── interview-research_<searchId>_<timestamp>.json  # Orchestration log
+└── ...
+```
+
+#### Detailed Log Format
+```typescript
+{
+  "searchId": "uuid",
+  "functionName": "company-research",
+  "startTime": "2024-01-01T00:00:00Z",
+  "endTime": "2024-01-01T00:05:23Z",
+  "totalDuration": 323000,
+  "summary": {
+    "totalLogs": 45,
+    "errors": 0,
+    "tavilySearches": 12,
+    "tavilyExtracts": 1,
+    "openaiCalls": 1,
+    "completedSuccessfully": true
+  },
+  "logs": [
+    {
+      "timestamp": "2024-01-01T00:00:00Z",
+      "operation": "TAVILY_SEARCH",
+      "phase": "DISCOVERY",
+      "input": { "query": "Amazon software engineer interview site:glassdoor.com" },
+      "output": { "resultsCount": 8, "extractedUrls": [...] },
+      "duration": 2500
+    }
+    // ... all execution steps
+  ]
+}
+```
+
+### 8.3 Troubleshooting Fast Responses
+
+#### Common Issues and Log Indicators
+
+**1. Missing Tavily API Key**
+```typescript
+// Look for this in logs:
+{
+  "operation": "CONFIG_ERROR",
+  "phase": "API_KEY_MISSING", 
+  "error": "TAVILY_API_KEY not found"
+}
+```
+
+**2. No Search Execution**
+```typescript
+// Should see these entries:
+{
+  "operation": "TAVILY_SEARCH",
+  "phase": "DISCOVERY_SUCCESS",
+  "output": { "resultsCount": 8 }
+}
+```
+
+**3. Failed URL Extraction**
+```typescript
+// Check for:
+{
+  "operation": "URL_EXTRACTION",
+  "phase": "PHASE2",
+  "metadata": { "totalUrls": 0 }  // Problem if 0
+}
+```
+
+**4. No Deep Content Extraction**
+```typescript
+// Should see:
+{
+  "operation": "TAVILY_EXTRACT",
+  "phase": "EXTRACTION_SUCCESS",
+  "output": { "extractedCount": 5 }
+}
+```
+
+### 8.4 Performance Monitoring
+
+#### Function Execution Metrics
+- **Discovery Phase**: Target 15-30 seconds for 12 parallel searches
+- **Extraction Phase**: Target 10-20 seconds for 15 URLs
+- **AI Analysis**: Target 5-15 seconds depending on content volume
+- **Total Duration**: Target under 60 seconds end-to-end
+
+#### Credit Usage Tracking
+- **Tavily Search**: 1 credit per query (12 credits per search)
+- **Tavily Extract**: 1 credit per URL (up to 15 credits per search)
+- **OpenAI**: Variable based on tokens (tracked in separate table)
 
 ## 9. Error Handling Strategy
 

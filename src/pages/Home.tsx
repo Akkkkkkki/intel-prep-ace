@@ -11,6 +11,7 @@ import { searchService } from "@/services/searchService";
 import { useAuth } from "@/hooks/useAuth";
 import { useToast } from "@/hooks/use-toast";
 import Navigation from "@/components/Navigation";
+import ProgressDialog from "@/components/ProgressDialog";
 
 const Home = () => {
   const navigate = useNavigate();
@@ -25,6 +26,9 @@ const Home = () => {
   });
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [showProgressDialog, setShowProgressDialog] = useState(false);
+  const [currentSearchId, setCurrentSearchId] = useState<string | null>(null);
+  const [searchStatus, setSearchStatus] = useState<'pending' | 'processing' | 'completed' | 'failed'>('pending');
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -48,15 +52,20 @@ const Home = () => {
       });
 
       if (result.success && result.searchId) {
+        // Set up progress dialog
+        setCurrentSearchId(result.searchId);
+        setSearchStatus('processing');
+        setShowProgressDialog(true);
+        
+        // Start polling for status updates
+        startStatusPolling(result.searchId);
+        
         // Show success toast notification
         toast({
           title: "Research Started!",
-          description: "Your interview research is being processed. This may take a few minutes. We'll show your results as soon as they're ready.",
-          duration: 5000,
+          description: "Your AI research is now running. Track progress in the dialog or check back in a few minutes.",
+          duration: 3000,
         });
-        
-        // Navigate to dashboard with search ID
-        navigate(`/dashboard?searchId=${result.searchId}`);
       } else {
         const errorMessage = result.error?.message || "Failed to create search. Please try again.";
         setError(errorMessage);
@@ -79,6 +88,38 @@ const Home = () => {
       });
     } finally {
       setIsLoading(false);
+    }
+  };
+
+  const startStatusPolling = (searchId: string) => {
+    const pollInterval = setInterval(async () => {
+      try {
+        const status = await searchService.getSearchStatus(searchId);
+        if (status) {
+          setSearchStatus(status.search_status as 'pending' | 'processing' | 'completed' | 'failed');
+          
+          if (status.search_status === 'completed' || status.search_status === 'failed') {
+            clearInterval(pollInterval);
+          }
+        }
+      } catch (error) {
+        console.error('Error polling search status:', error);
+      }
+    }, 3000); // Poll every 3 seconds
+
+    // Clear interval after 10 minutes to prevent infinite polling
+    setTimeout(() => {
+      clearInterval(pollInterval);
+    }, 600000);
+  };
+
+  const handleCloseProgressDialog = () => {
+    setShowProgressDialog(false);
+  };
+
+  const handleViewResults = () => {
+    if (currentSearchId) {
+      navigate(`/search/${currentSearchId}`);
     }
   };
 
@@ -233,6 +274,16 @@ const Home = () => {
           </CardContent>
         </Card>
       </div>
+      
+      {/* Progress Dialog */}
+      <ProgressDialog
+        isOpen={showProgressDialog}
+        onClose={handleCloseProgressDialog}
+        onViewResults={handleViewResults}
+        searchStatus={searchStatus}
+        company={formData.company}
+        role={formData.role}
+      />
     </div>
   );
 };

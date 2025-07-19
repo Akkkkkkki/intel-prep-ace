@@ -1,5 +1,6 @@
 import { serve } from "https://deno.land/std@0.177.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.43.2";
+import { SearchLogger } from "../_shared/logger.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -24,6 +25,7 @@ interface CompanyInsights {
   values: string[];
   interview_philosophy: string;
   recent_hiring_trends: string;
+  interview_stages?: InterviewStageStructured[];
   interview_experiences: {
     positive_feedback: string[];
     negative_feedback: string[];
@@ -170,7 +172,7 @@ async function gatherCVData(cv: string, userId: string) {
 
     if (response.ok) {
       const result = await response.json();
-      return result.aiAnalysis;
+      return result; // Return the full result with both aiAnalysis and parsedData
     }
     
     console.warn("CV analysis failed, continuing without data");
@@ -291,6 +293,24 @@ async function conductInterviewSynthesis(
     synthesisContext += `Values: ${companyInsights.values?.join(', ')}\n`;
     synthesisContext += `Interview Philosophy: ${companyInsights.interview_philosophy}\n`;
     synthesisContext += `Hiring Trends: ${companyInsights.recent_hiring_trends}\n`;
+    
+    // Include interview stages if available from company research
+    if (companyInsights.interview_stages && companyInsights.interview_stages.length > 0) {
+      synthesisContext += `\nInterview Stages (from candidate reports):\n`;
+      companyInsights.interview_stages.forEach((stage: any, index: number) => {
+        synthesisContext += `Stage ${index + 1}: ${stage.name}\n`;
+        synthesisContext += `Duration: ${stage.duration}\n`;
+        synthesisContext += `Interviewer: ${stage.interviewer}\n`;
+        synthesisContext += `Content: ${stage.content}\n`;
+        if (stage.common_questions && stage.common_questions.length > 0) {
+          synthesisContext += `Common Questions: ${stage.common_questions.join(', ')}\n`;
+        }
+        if (stage.success_tips && stage.success_tips.length > 0) {
+          synthesisContext += `Success Tips: ${stage.success_tips.join(', ')}\n`;
+        }
+        synthesisContext += `\n`;
+      });
+    }
   }
   
   if (jobRequirements) {
@@ -303,11 +323,13 @@ async function conductInterviewSynthesis(
   }
   
   if (cvAnalysis) {
+    // Use aiAnalysis for processing context (raw data structure)
+    const analysisData = cvAnalysis.aiAnalysis || cvAnalysis;
     synthesisContext += `\n\nCandidate Profile:\n`;
-    synthesisContext += `Current Role: ${cvAnalysis.current_role || 'Not specified'}\n`;
-    synthesisContext += `Experience: ${cvAnalysis.experience_years || 'Not specified'} years\n`;
-    synthesisContext += `Technical Skills: ${cvAnalysis.skills?.technical?.join(', ')}\n`;
-    synthesisContext += `Key Achievements: ${cvAnalysis.key_achievements?.join(', ')}\n`;
+    synthesisContext += `Current Role: ${analysisData.current_role || 'Not specified'}\n`;
+    synthesisContext += `Experience: ${analysisData.experience_years || 'Not specified'} years\n`;
+    synthesisContext += `Technical Skills: ${analysisData.skills?.technical?.join(', ')}\n`;
+    synthesisContext += `Key Achievements: ${analysisData.key_achievements?.join(', ')}\n`;
   }
 
   const response = await fetch('https://api.openai.com/v1/chat/completions', {
@@ -318,12 +340,19 @@ async function conductInterviewSynthesis(
     },
     body: JSON.stringify({
       model: 'gpt-4o',
+      response_format: { type: "json_object" },
       messages: [
         {
           role: 'system',
           content: `You are an expert interview preparation consultant with deep knowledge of hiring practices across major companies. 
 
-Based on the provided research context, create a comprehensive, personalized interview preparation guide. 
+Based on the provided research context, create a comprehensive, personalized interview preparation guide. Use the interview stages from company research if available, otherwise create appropriate stages.
+
+CRITICAL REQUIREMENTS:
+1. Use interview stages from company research data if provided
+2. Generate personalized guidance based on candidate's CV and job requirements
+3. Create specific preparation strategies that align with company culture and values
+4. Provide actionable timeline for interview preparation
 
 You MUST return ONLY valid JSON in this exact structure - no markdown, no additional text:
 
@@ -382,7 +411,24 @@ You MUST return ONLY valid JSON in this exact structure - no markdown, no additi
   const synthesisResult = data.choices[0].message.content;
   
   try {
-    return JSON.parse(synthesisResult);
+    const parsedResult = JSON.parse(synthesisResult);
+    
+    // Use interview stages from company research if available
+    if (companyInsights?.interview_stages && companyInsights.interview_stages.length > 0) {
+      parsedResult.interview_stages = companyInsights.interview_stages.map((stage: any, index: number) => ({
+        name: stage.name,
+        order_index: stage.order_index || index + 1,
+        duration: stage.duration,
+        interviewer: stage.interviewer,
+        content: stage.content,
+        guidance: `Based on candidate reports: ${stage.content}`,
+        preparation_tips: stage.success_tips || [],
+        common_questions: stage.common_questions || [],
+        red_flags_to_avoid: []
+      }));
+    }
+    
+    return parsedResult;
   } catch (parseError) {
     console.error("Failed to parse AI synthesis JSON:", parseError);
     console.error("Raw response:", synthesisResult);
@@ -399,26 +445,48 @@ You MUST return ONLY valid JSON in this exact structure - no markdown, no additi
       },
       interview_stages: [
         {
-          name: "Initial Screening",
+          name: "Initial Phone/Video Screening",
           order_index: 1,
           duration: "30-45 minutes",
-          interviewer: "HR/Recruiter",
-          content: "Resume review and basic qualifications",
-          guidance: "Prepare elevator pitch and company research",
-          preparation_tips: ["Research company basics", "Prepare STAR stories"],
-          common_questions: ["Tell me about yourself", "Why this company?"],
-          red_flags_to_avoid: ["Lack of company knowledge", "Unclear career goals"]
+          interviewer: "HR Recruiter or Talent Acquisition",
+          content: "Resume review, basic qualifications check, and cultural fit assessment",
+          guidance: "Prepare your elevator pitch, research the company thoroughly, and be ready to discuss your career motivations",
+          preparation_tips: ["Practice 2-minute elevator pitch", "Research company mission and values", "Prepare 3-5 STAR stories", "Review job description thoroughly"],
+          common_questions: ["Tell me about yourself", "Why are you interested in this role?", "Why this company?", "Walk me through your resume", "What are your salary expectations?"],
+          red_flags_to_avoid: ["Lack of company knowledge", "Unclear career goals", "Negative comments about previous employers", "Unrealistic salary expectations"]
         },
         {
-          name: "Technical Interview",
+          name: "Technical Assessment",
           order_index: 2,
           duration: "60-90 minutes",
-          interviewer: "Hiring Manager/Team Lead",
-          content: "Technical skills assessment",
-          guidance: "Review technical requirements and practice coding",
-          preparation_tips: ["Practice coding problems", "Review system design"],
-          common_questions: ["Explain your technical approach", "Code this problem"],
-          red_flags_to_avoid: ["Unable to explain reasoning", "Poor coding practices"]
+          interviewer: "Senior Developer or Technical Lead",
+          content: "Technical skills evaluation, coding challenges, and problem-solving assessment",
+          guidance: "Review core technical concepts, practice coding problems, and prepare to explain your thought process clearly",
+          preparation_tips: ["Practice coding problems on relevant platforms", "Review system design concepts", "Prepare technical questions to ask", "Practice explaining code verbally"],
+          common_questions: ["Solve this coding problem", "Explain your approach to system design", "How would you optimize this code?", "Tell me about a challenging technical problem you solved"],
+          red_flags_to_avoid: ["Unable to explain reasoning", "Poor coding practices", "Giving up too quickly on problems", "Not asking clarifying questions"]
+        },
+        {
+          name: "Team/Behavioral Interview",
+          order_index: 3,
+          duration: "45-60 minutes",
+          interviewer: "Hiring Manager and/or Team Members",
+          content: "Behavioral questions, team fit assessment, and leadership scenarios",
+          guidance: "Focus on demonstrating collaboration skills, leadership experience, and alignment with team culture",
+          preparation_tips: ["Prepare detailed STAR stories for each core competency", "Research team structure and dynamics", "Think of examples showing leadership and collaboration", "Prepare thoughtful questions about team processes"],
+          common_questions: ["Tell me about a time you led a team", "Describe a conflict you resolved", "How do you handle tight deadlines?", "Give an example of learning from failure"],
+          red_flags_to_avoid: ["Inability to give specific examples", "Blaming others for failures", "Showing poor communication skills", "Lack of self-awareness"]
+        },
+        {
+          name: "Final Round/Executive Interview",
+          order_index: 4,
+          duration: "30-45 minutes",
+          interviewer: "Senior Manager or Director",
+          content: "Strategic thinking, long-term vision, and final cultural fit assessment",
+          guidance: "Demonstrate strategic thinking, show understanding of business context, and articulate your long-term career vision",
+          preparation_tips: ["Research company strategy and industry trends", "Prepare vision for role and career growth", "Think about strategic challenges the company faces", "Prepare executive-level questions"],
+          common_questions: ["Where do you see yourself in 5 years?", "How would you approach the first 90 days?", "What challenges do you see in this industry?", "How do you stay current with industry trends?"],
+          red_flags_to_avoid: ["Lack of strategic thinking", "No questions for interviewer", "Unclear long-term goals", "Insufficient business awareness"]
         }
       ],
       personalized_guidance: {
@@ -447,6 +515,10 @@ serve(async (req) => {
   try {
     const { company, role, country, roleLinks, cv, userId, searchId } = await req.json() as SynthesisRequest;
 
+    // Initialize logger
+    const logger = new SearchLogger(searchId, 'interview-research', userId);
+    logger.log('REQUEST_INPUT', 'VALIDATION', { company, role, country, roleLinks: roleLinks?.length, hasCv: !!cv, userId });
+
     // Create Supabase client
     const supabaseUrl = Deno.env.get("SUPABASE_URL")!;
     const supabaseServiceKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
@@ -467,12 +539,24 @@ serve(async (req) => {
     console.log("Starting interview synthesis for", company, role || "");
 
     // Step 1: Gather data from microservices (can run in parallel)
+    logger.log('STEP_START', 'DATA_GATHERING', { step: 1, description: 'Gathering data from microservices' });
     console.log("Gathering data from microservices...");
+    
+    const startTime = Date.now();
     const [companyInsights, jobRequirements, cvAnalysis] = await Promise.all([
       gatherCompanyData(company, role, country, searchId),
       gatherJobData(roleLinks || [], searchId, company, role), 
       gatherCVData(cv || "", userId)
     ]);
+    const duration = Date.now() - startTime;
+    
+    logger.log('DATA_GATHERING_COMPLETE', 'MICROSERVICES', { 
+      duration,
+      companyInsightsFound: !!companyInsights,
+      jobRequirementsFound: !!jobRequirements,
+      cvAnalysisFound: !!cvAnalysis,
+      companyInterviewStages: companyInsights?.interview_stages?.length || 0
+    });
 
     // Step 2: Conduct AI synthesis to generate final outputs
     console.log("Conducting AI synthesis...");
@@ -491,7 +575,7 @@ serve(async (req) => {
     const cvJobComparison = await generateCVJobComparison(
       searchId,
       userId,
-      cvAnalysis,
+      cvAnalysis?.aiAnalysis || cvAnalysis, // Use aiAnalysis for processing
       jobRequirements,
       companyInsights
     );
@@ -503,7 +587,7 @@ serve(async (req) => {
       userId,
       companyInsights,
       jobRequirements,
-      cvAnalysis,
+      cvAnalysis?.aiAnalysis || cvAnalysis, // Use aiAnalysis for processing
       synthesisResult.interview_stages
     );
 
@@ -543,14 +627,50 @@ serve(async (req) => {
 
     // Step 6: Save CV analysis if provided
     if (cv && cvAnalysis) {
-      await supabase
-        .from("resumes")
-        .insert({
+      try {
+        console.log("Saving CV analysis to resumes table...");
+        console.log("CV Analysis structure:", Object.keys(cvAnalysis));
+        
+        const resumeData = {
           user_id: userId,
           search_id: searchId,
           content: cv,
-          parsed_data: cvAnalysis
+          parsed_data: cvAnalysis.parsedData || cvAnalysis // Use parsedData if available, otherwise fallback to cvAnalysis
+        };
+        
+        console.log("Resume data to save:", {
+          user_id: userId,
+          search_id: searchId,
+          content_length: cv.length,
+          has_parsed_data: !!(cvAnalysis.parsedData || cvAnalysis)
         });
+        
+        const { data: resumeResult, error: resumeError } = await supabase
+          .from("resumes")
+          .insert(resumeData)
+          .select()
+          .single();
+          
+        if (resumeError) {
+          console.error("Error saving resume:", resumeError);
+          throw resumeError;
+        }
+        
+        console.log("Successfully saved resume with ID:", resumeResult.id);
+        logger.log('CV_SAVED', 'DATABASE', { 
+          resumeId: resumeResult.id,
+          userId,
+          searchId,
+          hasStructuredData: !!resumeResult.full_name
+        });
+        
+      } catch (error) {
+        console.error("Failed to save CV analysis:", error);
+        logger.log('CV_SAVE_ERROR', 'DATABASE', { error: error.message, userId, searchId });
+        // Continue processing even if CV save fails
+      }
+    } else {
+      console.log("Skipping CV save - cv:", !!cv, "cvAnalysis:", !!cvAnalysis);
     }
 
     // Step 7: Store enhanced question bank and comparison data
@@ -608,22 +728,29 @@ serve(async (req) => {
 
     console.log("Interview synthesis completed successfully");
 
+    const responseData = { 
+      status: "success", 
+      message: "Interview synthesis completed",
+      insights: {
+        company_data_found: !!companyInsights,
+        job_data_found: !!jobRequirements,
+        cv_analyzed: !!cvAnalysis,
+        stages_created: synthesisResult.interview_stages.length,
+        personalized_guidance: synthesisResult.personalized_guidance,
+        cv_job_comparison: cvJobComparison,
+        enhanced_questions: enhancedQuestions,
+        preparation_priorities: cvJobComparison?.preparation_priorities || [],
+        overall_fit_score: cvJobComparison?.overall_fit_score || 0
+      }
+    };
+
+    logger.logFunctionEnd(true, responseData);
+    
+    // Save logs to file for debugging
+    await logger.saveToFile();
+
     return new Response(
-      JSON.stringify({ 
-        status: "success", 
-        message: "Interview synthesis completed",
-        insights: {
-          company_data_found: !!companyInsights,
-          job_data_found: !!jobRequirements,
-          cv_analyzed: !!cvAnalysis,
-          stages_created: synthesisResult.interview_stages.length,
-          personalized_guidance: synthesisResult.personalized_guidance,
-          cv_job_comparison: cvJobComparison,
-          enhanced_questions: enhancedQuestions,
-          preparation_priorities: cvJobComparison?.preparation_priorities || [],
-          overall_fit_score: cvJobComparison?.overall_fit_score || 0
-        }
-      }),
+      JSON.stringify(responseData),
       {
         headers: { ...corsHeaders, "Content-Type": "application/json" },
         status: 200,

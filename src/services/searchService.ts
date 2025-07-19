@@ -59,6 +59,23 @@ export const searchService = {
     }
   },
 
+  async getSearchStatus(searchId: string) {
+    try {
+      const { data, error } = await supabase
+        .from("searches")
+        .select("id, search_status")
+        .eq("id", searchId)
+        .single();
+
+      if (error) throw error;
+
+      return data;
+    } catch (error) {
+      console.error("Error getting search status:", error);
+      return null;
+    }
+  },
+
   async getSearchResults(searchId: string) {
     try {
       // Get the search record with enhanced data
@@ -201,6 +218,7 @@ export const searchService = {
 
   async getResume(userId: string) {
     try {
+      // First try to get basic resume data
       const { data, error } = await supabase
         .from("resumes")
         .select("*")
@@ -256,7 +274,7 @@ export const searchService = {
         .from("resumes")
         .insert({
           content,
-          parsed_data: parsedData || null,
+          parsed_data: (parsedData as any) || null,
           user_id: user.user.id
         })
         .select()

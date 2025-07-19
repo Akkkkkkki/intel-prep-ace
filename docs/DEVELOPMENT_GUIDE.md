@@ -1059,6 +1059,130 @@ console.log("API call result:", {
 3. Update service methods
 4. Test RLS policies
 
+### Enhanced Logging Infrastructure
+The application now includes comprehensive logging for real candidate experience research and debugging.
+
+#### New Logging System Architecture
+```typescript
+import { SearchLogger } from '../_shared/logger.ts';
+
+// Initialize logger with search context
+const logger = new SearchLogger(searchId, 'function-name', userId);
+
+// Log different types of operations
+logger.log('OPERATION_TYPE', 'PHASE', data, error?, duration?);
+logger.logTavilySearch(query, phase, requestPayload, response, error, duration);
+logger.logTavilyExtract(urls, phase, response, error, duration);
+logger.logOpenAI(operation, phase, request, response, error, duration);
+
+// Log phase transitions
+logger.logPhaseTransition('DISCOVERY', 'EXTRACTION', data);
+
+// Log data processing
+logger.logDataProcessing('CONTEXT_BUILDING', inputData, outputData, error);
+
+// End function execution
+logger.logFunctionEnd(success, result, error);
+
+// Save detailed logs to file
+await logger.saveToFile();
+```
+
+#### Enhanced Company Research Process
+The interview research pipeline now follows a **Retrieve-then-Extract** pattern:
+
+1. **Phase 1: Discovery Searches**
+   - Target-specific queries for Glassdoor interview pages (`site:glassdoor.com/Interview`)
+   - Company ticker symbol searches for Blind (`AMZN interview`, `GOOGL interview`)
+   - 1point3acres searches for international candidates (`interview 面试`)
+   - Role-specific searches with recent time filters (`2024 2025`)
+
+2. **Phase 2: Deep Content Extraction**
+   - URLs extracted from discovery phase
+   - Tavily `/extract` API for full page content (4-6k characters vs previous 200 char snippets)
+   - Focus on interview review sites (Glassdoor, Blind, 1point3acres, Reddit)
+
+3. **Phase 3: AI Analysis with Real Data**
+   - Raw content processing with `include_raw_content: true`
+   - Interview stages extracted from actual candidate reports
+   - JSON mode for reliable parsing (`response_format: { type: "json_object" }`)
+
+#### Debugging with Log Files
+All search executions now save detailed logs to `supabase/functions/logs/`:
+
+```bash
+# Check recent logs
+ls -la supabase/functions/logs/
+
+# View detailed execution log
+cat supabase/functions/logs/company-research_<searchId>_<timestamp>.json
+
+# View quick summary
+cat supabase/functions/logs/company-research_<searchId>_summary.json
+```
+
+#### Log File Structure
+```typescript
+// Detailed log file contains:
+{
+  "searchId": "uuid",
+  "functionName": "company-research", 
+  "startTime": "2024-01-01T00:00:00Z",
+  "endTime": "2024-01-01T00:05:23Z",
+  "totalDuration": 323000,
+  "summary": {
+    "totalLogs": 45,
+    "errors": 0,
+    "tavilySearches": 12,
+    "tavilyExtracts": 1,
+    "openaiCalls": 1,
+    "completedSuccessfully": true
+  },
+  "logs": [
+    {
+      "timestamp": "2024-01-01T00:00:00Z",
+      "operation": "TAVILY_SEARCH",
+      "phase": "DISCOVERY",
+      "input": { "query": "Amazon software engineer interview site:glassdoor.com" },
+      "output": { "resultsCount": 8, "extractedUrls": [...] },
+      "duration": 2500
+    }
+    // ... all execution steps
+  ]
+}
+```
+
+#### Troubleshooting Fast Responses
+If searches complete too quickly without real data:
+
+1. **Check Tavily API Key**: Look for `CONFIG_ERROR:API_KEY_MISSING` in logs
+2. **Verify Search Execution**: Check for `TAVILY_SEARCH:DISCOVERY_SUCCESS` entries
+3. **Confirm URL Extraction**: Look for `URL_EXTRACTION` with `totalUrls > 0`
+4. **Validate Deep Extraction**: Verify `TAVILY_EXTRACT:EXTRACTION_SUCCESS` with content
+
+#### Cost Monitoring with Enhanced Logging
+```sql
+-- Enhanced Tavily usage tracking
+SELECT 
+  DATE(created_at) as date,
+  api_type,
+  SUM(credits_used) as total_credits,
+  COUNT(*) as total_calls,
+  AVG(results_count) as avg_results
+FROM tavily_searches 
+GROUP BY DATE(created_at), api_type
+ORDER BY date DESC;
+
+-- Function execution performance
+SELECT 
+  function_name,
+  AVG(execution_time_ms) as avg_duration,
+  COUNT(*) as executions,
+  SUM(CASE WHEN status = 'completed' THEN 1 ELSE 0 END) as success_rate
+FROM function_executions 
+GROUP BY function_name;
+```
+
 ## Performance Tips
 
 ### React Performance

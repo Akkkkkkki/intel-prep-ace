@@ -12,8 +12,260 @@ export type Database = {
   __InternalSupabase: {
     PostgrestVersion: "12.2.3 (519615d)"
   }
+  graphql_public: {
+    Tables: {
+      [_ in never]: never
+    }
+    Views: {
+      [_ in never]: never
+    }
+    Functions: {
+      graphql: {
+        Args: {
+          operationName?: string
+          query?: string
+          variables?: Json
+          extensions?: Json
+        }
+        Returns: Json
+      }
+    }
+    Enums: {
+      [_ in never]: never
+    }
+    CompositeTypes: {
+      [_ in never]: never
+    }
+  }
   public: {
     Tables: {
+      cv_job_comparisons: {
+        Row: {
+          created_at: string
+          experience_gap_analysis: Json
+          id: string
+          interview_prep_strategy: Json
+          overall_fit_score: number
+          personalized_story_bank: Json
+          preparation_priorities: string[] | null
+          search_id: string | null
+          skill_gap_analysis: Json
+          updated_at: string
+          user_id: string | null
+        }
+        Insert: {
+          created_at?: string
+          experience_gap_analysis: Json
+          id?: string
+          interview_prep_strategy: Json
+          overall_fit_score?: number
+          personalized_story_bank: Json
+          preparation_priorities?: string[] | null
+          search_id?: string | null
+          skill_gap_analysis: Json
+          updated_at?: string
+          user_id?: string | null
+        }
+        Update: {
+          created_at?: string
+          experience_gap_analysis?: Json
+          id?: string
+          interview_prep_strategy?: Json
+          overall_fit_score?: number
+          personalized_story_bank?: Json
+          preparation_priorities?: string[] | null
+          search_id?: string | null
+          skill_gap_analysis?: Json
+          updated_at?: string
+          user_id?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "cv_job_comparisons_search_id_fkey"
+            columns: ["search_id"]
+            isOneToOne: false
+            referencedRelation: "searches"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      enhanced_question_banks: {
+        Row: {
+          behavioral_questions: Json | null
+          company_specific_questions: Json | null
+          created_at: string
+          cultural_fit_questions: Json | null
+          experience_based_questions: Json | null
+          generation_context: Json | null
+          id: string
+          interview_stage: string
+          role_specific_questions: Json | null
+          search_id: string | null
+          situational_questions: Json | null
+          technical_questions: Json | null
+          total_questions: number | null
+          updated_at: string
+          user_id: string | null
+        }
+        Insert: {
+          behavioral_questions?: Json | null
+          company_specific_questions?: Json | null
+          created_at?: string
+          cultural_fit_questions?: Json | null
+          experience_based_questions?: Json | null
+          generation_context?: Json | null
+          id?: string
+          interview_stage: string
+          role_specific_questions?: Json | null
+          search_id?: string | null
+          situational_questions?: Json | null
+          technical_questions?: Json | null
+          total_questions?: number | null
+          updated_at?: string
+          user_id?: string | null
+        }
+        Update: {
+          behavioral_questions?: Json | null
+          company_specific_questions?: Json | null
+          created_at?: string
+          cultural_fit_questions?: Json | null
+          experience_based_questions?: Json | null
+          generation_context?: Json | null
+          id?: string
+          interview_stage?: string
+          role_specific_questions?: Json | null
+          search_id?: string | null
+          situational_questions?: Json | null
+          technical_questions?: Json | null
+          total_questions?: number | null
+          updated_at?: string
+          user_id?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "enhanced_question_banks_search_id_fkey"
+            columns: ["search_id"]
+            isOneToOne: false
+            referencedRelation: "searches"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      function_executions: {
+        Row: {
+          created_at: string
+          error_message: string | null
+          execution_time_ms: number | null
+          function_name: string
+          id: string
+          openai_call_ids: string[] | null
+          processed_outputs: Json | null
+          raw_inputs: Json
+          raw_outputs: Json | null
+          search_id: string | null
+          status: string | null
+          tavily_call_ids: string[] | null
+          updated_at: string
+          user_id: string | null
+        }
+        Insert: {
+          created_at?: string
+          error_message?: string | null
+          execution_time_ms?: number | null
+          function_name: string
+          id?: string
+          openai_call_ids?: string[] | null
+          processed_outputs?: Json | null
+          raw_inputs: Json
+          raw_outputs?: Json | null
+          search_id?: string | null
+          status?: string | null
+          tavily_call_ids?: string[] | null
+          updated_at?: string
+          user_id?: string | null
+        }
+        Update: {
+          created_at?: string
+          error_message?: string | null
+          execution_time_ms?: number | null
+          function_name?: string
+          id?: string
+          openai_call_ids?: string[] | null
+          processed_outputs?: Json | null
+          raw_inputs?: Json
+          raw_outputs?: Json | null
+          search_id?: string | null
+          status?: string | null
+          tavily_call_ids?: string[] | null
+          updated_at?: string
+          user_id?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "function_executions_search_id_fkey"
+            columns: ["search_id"]
+            isOneToOne: false
+            referencedRelation: "searches"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      interview_experiences: {
+        Row: {
+          company_name: string
+          created_at: string
+          difficulty_rating: string | null
+          experience_text: string | null
+          experience_type: string | null
+          id: string
+          interviewer_feedback: string | null
+          process_duration: string | null
+          questions_asked: string[] | null
+          role_title: string | null
+          search_id: string | null
+          source_platform: string | null
+          source_url: string | null
+        }
+        Insert: {
+          company_name: string
+          created_at?: string
+          difficulty_rating?: string | null
+          experience_text?: string | null
+          experience_type?: string | null
+          id?: string
+          interviewer_feedback?: string | null
+          process_duration?: string | null
+          questions_asked?: string[] | null
+          role_title?: string | null
+          search_id?: string | null
+          source_platform?: string | null
+          source_url?: string | null
+        }
+        Update: {
+          company_name?: string
+          created_at?: string
+          difficulty_rating?: string | null
+          experience_text?: string | null
+          experience_type?: string | null
+          id?: string
+          interviewer_feedback?: string | null
+          process_duration?: string | null
+          questions_asked?: string[] | null
+          role_title?: string | null
+          search_id?: string | null
+          source_platform?: string | null
+          source_url?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "interview_experiences_search_id_fkey"
+            columns: ["search_id"]
+            isOneToOne: false
+            referencedRelation: "searches"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       interview_questions: {
         Row: {
           created_at: string
@@ -80,6 +332,68 @@ export type Database = {
         Relationships: [
           {
             foreignKeyName: "interview_stages_search_id_fkey"
+            columns: ["search_id"]
+            isOneToOne: false
+            referencedRelation: "searches"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      openai_calls: {
+        Row: {
+          completion_tokens: number | null
+          created_at: string
+          endpoint_url: string
+          error_message: string | null
+          function_name: string
+          id: string
+          model: string
+          prompt_tokens: number | null
+          request_duration_ms: number | null
+          request_payload: Json
+          response_payload: Json | null
+          response_status: number
+          search_id: string | null
+          total_tokens: number | null
+          user_id: string | null
+        }
+        Insert: {
+          completion_tokens?: number | null
+          created_at?: string
+          endpoint_url: string
+          error_message?: string | null
+          function_name: string
+          id?: string
+          model: string
+          prompt_tokens?: number | null
+          request_duration_ms?: number | null
+          request_payload: Json
+          response_payload?: Json | null
+          response_status: number
+          search_id?: string | null
+          total_tokens?: number | null
+          user_id?: string | null
+        }
+        Update: {
+          completion_tokens?: number | null
+          created_at?: string
+          endpoint_url?: string
+          error_message?: string | null
+          function_name?: string
+          id?: string
+          model?: string
+          prompt_tokens?: number | null
+          request_duration_ms?: number | null
+          request_payload?: Json
+          response_payload?: Json | null
+          response_status?: number
+          search_id?: string | null
+          total_tokens?: number | null
+          user_id?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "openai_calls_search_id_fkey"
             columns: ["search_id"]
             isOneToOne: false
             referencedRelation: "searches"
@@ -231,7 +545,11 @@ export type Database = {
           company: string
           country: string | null
           created_at: string
+          cv_job_comparison: Json | null
+          enhanced_question_bank: Json | null
           id: string
+          overall_fit_score: number | null
+          preparation_priorities: string[] | null
           role: string | null
           role_links: string | null
           search_status: string
@@ -241,7 +559,11 @@ export type Database = {
           company: string
           country?: string | null
           created_at?: string
+          cv_job_comparison?: Json | null
+          enhanced_question_bank?: Json | null
           id?: string
+          overall_fit_score?: number | null
+          preparation_priorities?: string[] | null
           role?: string | null
           role_links?: string | null
           search_status?: string
@@ -251,7 +573,11 @@ export type Database = {
           company?: string
           country?: string | null
           created_at?: string
+          cv_job_comparison?: Json | null
+          enhanced_question_bank?: Json | null
           id?: string
+          overall_fit_score?: number | null
+          preparation_priorities?: string[] | null
           role?: string | null
           role_links?: string | null
           search_status?: string
@@ -259,12 +585,98 @@ export type Database = {
         }
         Relationships: []
       }
+      tavily_searches: {
+        Row: {
+          api_type: string
+          created_at: string
+          credits_used: number | null
+          endpoint_url: string
+          error_message: string | null
+          id: string
+          include_domains: string[] | null
+          max_results: number | null
+          query_text: string | null
+          request_duration_ms: number | null
+          request_payload: Json
+          response_payload: Json | null
+          response_status: number
+          results_count: number | null
+          search_depth: string | null
+          search_id: string | null
+          user_id: string | null
+        }
+        Insert: {
+          api_type: string
+          created_at?: string
+          credits_used?: number | null
+          endpoint_url: string
+          error_message?: string | null
+          id?: string
+          include_domains?: string[] | null
+          max_results?: number | null
+          query_text?: string | null
+          request_duration_ms?: number | null
+          request_payload: Json
+          response_payload?: Json | null
+          response_status: number
+          results_count?: number | null
+          search_depth?: string | null
+          search_id?: string | null
+          user_id?: string | null
+        }
+        Update: {
+          api_type?: string
+          created_at?: string
+          credits_used?: number | null
+          endpoint_url?: string
+          error_message?: string | null
+          id?: string
+          include_domains?: string[] | null
+          max_results?: number | null
+          query_text?: string | null
+          request_duration_ms?: number | null
+          request_payload?: Json
+          response_payload?: Json | null
+          response_status?: number
+          results_count?: number | null
+          search_depth?: string | null
+          search_id?: string | null
+          user_id?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "tavily_searches_search_id_fkey"
+            columns: ["search_id"]
+            isOneToOne: false
+            referencedRelation: "searches"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
     }
     Views: {
       [_ in never]: never
     }
     Functions: {
-      [_ in never]: never
+      calculate_openai_cost: {
+        Args: {
+          model: string
+          prompt_tokens: number
+          completion_tokens: number
+        }
+        Returns: number
+      }
+      get_enhanced_search_results: {
+        Args: { p_search_id: string }
+        Returns: {
+          search_data: Json
+          interview_stages: Json
+          interview_questions: Json
+          cv_job_comparison: Json
+          enhanced_questions: Json
+          interview_experiences: Json
+        }[]
+      }
     }
     Enums: {
       [_ in never]: never
@@ -393,6 +805,9 @@ export type CompositeTypes<
     : never
 
 export const Constants = {
+  graphql_public: {
+    Enums: {},
+  },
   public: {
     Enums: {},
   },
