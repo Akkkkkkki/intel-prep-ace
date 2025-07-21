@@ -37,6 +37,13 @@ const ProgressDialog = ({
 
     let interval: NodeJS.Timeout;
     
+    // Immediately set to complete if status is already completed
+    if (searchStatus === 'completed') {
+      setCurrentStep(steps.length - 1);
+      setProgressValue(100);
+      return;
+    }
+    
     if (searchStatus === 'pending' || searchStatus === 'processing') {
       interval = setInterval(() => {
         setCurrentStep(prev => {
@@ -45,15 +52,13 @@ const ProgressDialog = ({
         });
         
         setProgressValue(prev => {
-          // More aggressive progress for better UX, but still cap before completion
-          if (prev >= 95) return Math.min(95, prev + 0.5); // Slow increment near completion
-          if (prev >= 80) return prev + Math.random() * 2 + 1; // Slower increment 80-95%
-          return prev + Math.random() * 4 + 3; // Faster increment 0-80%
+          // Allow progress to reach 98% during processing, completion will set to 100%
+          if (prev >= 98) return Math.min(98, prev + 0.2); // Very slow increment near completion
+          if (prev >= 85) return prev + Math.random() * 1.5 + 0.5; // Slower increment 85-98%
+          if (prev >= 70) return prev + Math.random() * 2.5 + 1; // Medium increment 70-85%
+          return prev + Math.random() * 4 + 3; // Faster increment 0-70%
         });
       }, 1500); // Faster updates for better perceived performance
-    } else if (searchStatus === 'completed') {
-      setCurrentStep(steps.length - 1);
-      setProgressValue(100);
     } else if (searchStatus === 'failed') {
       // Don't change progress when failed
     }
@@ -62,6 +67,14 @@ const ProgressDialog = ({
       if (interval) clearInterval(interval);
     };
   }, [isOpen, searchStatus, steps.length]);
+
+  // Separate effect to handle completion immediately when status changes
+  useEffect(() => {
+    if (searchStatus === 'completed') {
+      setCurrentStep(steps.length - 1);
+      setProgressValue(100);
+    }
+  }, [searchStatus, steps.length]);
 
   const getStatusMessage = () => {
     switch (searchStatus) {

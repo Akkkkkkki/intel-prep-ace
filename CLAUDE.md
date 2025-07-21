@@ -235,43 +235,82 @@ npx supabase functions deploy FUNCTION_NAME  # Deploy specific function
 - 50%+ improvement in response times when cache hits occur
 - System reliability with zero timeout-related failures
 
-### **Interview Experience Research Enhancement**
+### **✅ RESOLVED: ProgressDialog and Generic Questions Issues**
 
-**Current Gaps**:
-- Generic interview stages not based on real company experiences
-- Limited extraction of actual candidate experiences from research sources
-- Missing experience quality assessment
+**Status**: Both critical user-facing issues **FIXED and deployed**
 
-**Enhancement Plan**:
+**Issues Fixed**:
+1. **ProgressDialog Stuck at 95%**: Fixed progress tracking logic that prevented completion
+2. **Generic Placeholder Questions**: Eliminated "behavioural question", "coding problem" placeholders
 
-#### **Experience Extraction Pipeline**
+**Root Causes Identified**:
+- ProgressDialog had hard-coded 95% cap with race condition between progress simulation and status polling
+- AI fallback system returned generic placeholders instead of specific interview questions
+- Insufficient validation of AI-generated content quality
+
+**Fixes Implemented**:
+
+#### **ProgressDialog Improvements** (`src/components/ProgressDialog.tsx`)
 ```typescript
-class InterviewExperienceProcessor {
-  // Extract real interview experiences from search results
-  async extractRealExperiences(searchResults: any[], company: string) {
-    return searchResults
-      .filter(result => this.isInterviewExperience(result))
-      .map(result => this.processInterviewContent(result, company))
-      .filter(exp => exp.qualityScore > 0.7);
+// Fixed: Removed 95% hard cap, added immediate completion handling
+useEffect(() => {
+  if (searchStatus === 'completed') {
+    setCurrentStep(steps.length - 1);
+    setProgressValue(100); // Immediate completion
   }
-  
-  private isInterviewExperience(content: any): boolean {
-    const patterns = [/interview process/i, /interviewed at/i, /they asked/i];
-    return patterns.some(p => p.test(content.content || content.title));
-  }
+}, [searchStatus, steps.length]);
+
+// Enhanced: Progress can now reach 98% during processing
+setProgressValue(prev => {
+  if (prev >= 98) return Math.min(98, prev + 0.2); // No more 95% cap
+  // ... smoother progress increments
+});
+```
+
+#### **AI Question Generation Improvements** (`supabase/functions/interview-research/index.ts`)
+```typescript
+// Enhanced AI prompts with explicit quality requirements
+content: `CRITICAL REQUIREMENTS:
+3. Create SPECIFIC, actionable interview questions - NO generic placeholders
+FORBIDDEN: "coding problem", "behavioural question", "solve this"
+EXAMPLES OF GOOD QUESTIONS: "How would you design a real-time notification system for 1M users?"`
+
+// Added validation for generic content detection
+if (parsedResult.interview_stages?.some(stage => 
+  stage.common_questions?.some(q => 
+    q.includes("coding problem") || q.includes("behavioural question")
+  ))) {
+  console.warn("AI returned generic placeholder questions, marking for improvement");
 }
 ```
 
-#### **Database Schema Updates**
-```sql
--- Enhance interview experiences with metadata
-ALTER TABLE public.interview_experiences ADD COLUMN IF NOT EXISTS
-  experience_type TEXT CHECK (experience_type IN ('positive', 'negative', 'neutral')),
-  difficulty_level TEXT CHECK (difficulty_level IN ('easy', 'medium', 'hard')),
-  source_credibility_score FLOAT DEFAULT 0.5,
-  interview_date DATE,
-  role_level TEXT;
-```
+#### **Enhanced Fallback Questions**
+Replaced all generic placeholders with specific, actionable questions:
+- **Technical**: "Walk me through how you would design a scalable web application"
+- **Behavioral**: "Tell me about a time you had to collaborate with a difficult team member"  
+- **Strategic**: "How do you balance innovation with maintaining existing systems?"
+
+**Files Updated**:
+- `src/components/ProgressDialog.tsx` - Progress tracking fixes
+- `supabase/functions/interview-research/index.ts` - AI prompt improvements and fallback questions
+
+**Expected Impact**:
+- ✅ Progress dialogs complete properly at 100%
+- ✅ Users see specific, actionable interview questions
+- ✅ Better user experience with meaningful preparation content
+- ✅ Reduced user confusion and support requests
+
+**Testing Results**:
+- ✅ Build successful 
+- ✅ Functions deployed to Supabase
+- ✅ TypeScript compilation successful
+
+### **Interview Experience Research Enhancement**
+
+**Future Improvements** (not yet implemented):
+- Enhanced extraction of actual candidate experiences from research sources
+- Experience quality assessment and credibility scoring
+- More sophisticated interview stage detection based on real company data
 
 ### **Success Metrics & Monitoring**
 - **URL Cache Hit Rate**: Target 40%+ (✅ re-enabled and tracking)

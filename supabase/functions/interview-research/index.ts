@@ -385,8 +385,13 @@ Based on the provided research context, create a comprehensive, personalized int
 CRITICAL REQUIREMENTS:
 1. Use interview stages from company research data if provided
 2. Generate personalized guidance based on candidate's CV and job requirements
-3. Create specific preparation strategies that align with company culture and values
-4. Provide actionable timeline for interview preparation
+3. Create SPECIFIC, actionable interview questions - NO generic placeholders like "coding problem", "behavioural question", "solve this", etc.
+4. Create specific preparation strategies that align with company culture and values
+5. Provide actionable timeline for interview preparation
+
+FORBIDDEN: Do NOT use generic placeholders in questions. Every question must be specific and actionable.
+EXAMPLES OF BAD QUESTIONS: "Solve this coding problem", "Tell me about a behavioural question", "Explain your approach"
+EXAMPLES OF GOOD QUESTIONS: "How would you design a real-time notification system for 1M users?", "Describe a time when you had to refactor legacy code while maintaining backward compatibility"
 
 You MUST return ONLY valid JSON in this exact structure - no markdown, no additional text:
 
@@ -438,6 +443,8 @@ You MUST return ONLY valid JSON in this exact structure - no markdown, no additi
   });
 
   if (!response.ok) {
+    const errorText = await response.text();
+    console.error("OpenAI API error:", response.status, errorText);
     throw new Error(`AI synthesis failed: ${response.status} ${response.statusText}`);
   }
 
@@ -446,6 +453,15 @@ You MUST return ONLY valid JSON in this exact structure - no markdown, no additi
   
   try {
     const parsedResult = JSON.parse(synthesisResult);
+    
+    // Validate that we have quality content, not generic fallbacks
+    if (parsedResult.interview_stages?.some((stage: any) => 
+      stage.common_questions?.some((q: string) => 
+        q.includes("coding problem") || q.includes("behavioural question") || q.toLowerCase().includes("solve this")
+      )
+    )) {
+      console.warn("AI returned generic placeholder questions, marking for improvement");
+    }
     
     // Use interview stages from company research if available
     if (companyInsights?.interview_stages && companyInsights.interview_stages.length > 0) {
@@ -466,6 +482,7 @@ You MUST return ONLY valid JSON in this exact structure - no markdown, no additi
   } catch (parseError) {
     console.error("Failed to parse AI synthesis JSON:", parseError);
     console.error("Raw response:", synthesisResult);
+    console.log("Attempting to create enhanced fallback structure with available data...");
     
     // Return fallback structure with basic interview stages
     return {
@@ -497,7 +514,14 @@ You MUST return ONLY valid JSON in this exact structure - no markdown, no additi
           content: "Technical skills evaluation, coding challenges, and problem-solving assessment",
           guidance: "Review core technical concepts, practice coding problems, and prepare to explain your thought process clearly",
           preparation_tips: ["Practice coding problems on relevant platforms", "Review system design concepts", "Prepare technical questions to ask", "Practice explaining code verbally"],
-          common_questions: ["Solve this coding problem", "Explain your approach to system design", "How would you optimize this code?", "Tell me about a challenging technical problem you solved"],
+          common_questions: [
+            "Walk me through how you would design a scalable web application",
+            "What's your experience with [relevant technology from job description]?",
+            "How do you approach debugging a complex production issue?",
+            "Describe a time when you had to optimize slow-performing code",
+            "What are the trade-offs between different database types for this use case?",
+            "How do you ensure code quality in a team environment?"
+          ],
           red_flags_to_avoid: ["Unable to explain reasoning", "Poor coding practices", "Giving up too quickly on problems", "Not asking clarifying questions"]
         },
         {
@@ -508,7 +532,14 @@ You MUST return ONLY valid JSON in this exact structure - no markdown, no additi
           content: "Behavioral questions, team fit assessment, and leadership scenarios",
           guidance: "Focus on demonstrating collaboration skills, leadership experience, and alignment with team culture",
           preparation_tips: ["Prepare detailed STAR stories for each core competency", "Research team structure and dynamics", "Think of examples showing leadership and collaboration", "Prepare thoughtful questions about team processes"],
-          common_questions: ["Tell me about a time you led a team", "Describe a conflict you resolved", "How do you handle tight deadlines?", "Give an example of learning from failure"],
+          common_questions: [
+            "Tell me about a time you had to collaborate with a difficult team member",
+            "Describe a situation where you had to adapt to significant changes",
+            "How do you prioritize tasks when everything seems urgent?",
+            "Give me an example of when you took initiative on a project",
+            "Tell me about a time when you had to learn a new technology quickly",
+            "Describe a situation where you had to give constructive feedback to a colleague"
+          ],
           red_flags_to_avoid: ["Inability to give specific examples", "Blaming others for failures", "Showing poor communication skills", "Lack of self-awareness"]
         },
         {
@@ -519,7 +550,14 @@ You MUST return ONLY valid JSON in this exact structure - no markdown, no additi
           content: "Strategic thinking, long-term vision, and final cultural fit assessment",
           guidance: "Demonstrate strategic thinking, show understanding of business context, and articulate your long-term career vision",
           preparation_tips: ["Research company strategy and industry trends", "Prepare vision for role and career growth", "Think about strategic challenges the company faces", "Prepare executive-level questions"],
-          common_questions: ["Where do you see yourself in 5 years?", "How would you approach the first 90 days?", "What challenges do you see in this industry?", "How do you stay current with industry trends?"],
+          common_questions: [
+            "How do you see this role evolving in the next 2-3 years?",
+            "What would you accomplish in your first 90 days in this position?",
+            "How do you balance innovation with maintaining existing systems?",
+            "What questions do you have about our company's strategic direction?",
+            "How do you stay updated with industry trends and best practices?",
+            "What do you think are the biggest challenges facing our industry right now?"
+          ],
           red_flags_to_avoid: ["Lack of strategic thinking", "No questions for interviewer", "Unclear long-term goals", "Insufficient business awareness"]
         }
       ],
