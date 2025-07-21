@@ -45,13 +45,17 @@ const ProgressDialog = ({
         });
         
         setProgressValue(prev => {
-          if (prev >= 90) return 90; // Cap at 90% until completed
-          return prev + Math.random() * 5 + 2; // Increment by 2-7%
+          // More aggressive progress for better UX, but still cap before completion
+          if (prev >= 95) return Math.min(95, prev + 0.5); // Slow increment near completion
+          if (prev >= 80) return prev + Math.random() * 2 + 1; // Slower increment 80-95%
+          return prev + Math.random() * 4 + 3; // Faster increment 0-80%
         });
-      }, 2000);
+      }, 1500); // Faster updates for better perceived performance
     } else if (searchStatus === 'completed') {
       setCurrentStep(steps.length - 1);
       setProgressValue(100);
+    } else if (searchStatus === 'failed') {
+      // Don't change progress when failed
     }
 
     return () => {
@@ -76,10 +80,14 @@ const ProgressDialog = ({
 
   const getTimeEstimate = () => {
     if (searchStatus === 'completed') return "Done!";
-    if (searchStatus === 'failed') return "Error occurred";
+    if (searchStatus === 'failed') return "Process failed";
     
-    const remaining = Math.max(1, 3 - Math.floor(progressValue / 30));
-    return `~${remaining} min remaining`;
+    // More realistic time estimates based on actual processing
+    if (progressValue < 25) return "~2-3 min remaining";
+    if (progressValue < 50) return "~1-2 min remaining";
+    if (progressValue < 80) return "~1 min remaining";
+    if (progressValue < 95) return "~30 sec remaining";
+    return "Almost done...";
   };
 
   const CurrentIcon = steps[currentStep]?.icon || Search;

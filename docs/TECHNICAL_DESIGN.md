@@ -70,7 +70,26 @@
 
 ## 2. Database Schema
 
-### 2.1 Entity Relationship Diagram
+> **📋 Complete Schema Documentation**: See [Optimized Database Schema](./OPTIMIZED_DATABASE_SCHEMA.md) for the full hybrid scraping schema documentation.
+
+### 2.1 Hybrid Scraping Architecture
+
+The database has been completely optimized for **hybrid native + Tavily scraping** approach:
+
+#### **Key Improvements:**
+- ✅ **Native scraping tables** for structured forum data (Glassdoor, Reddit, Blind, LeetCode)
+- ✅ **Quality scoring system** with automated content assessment  
+- ✅ **Cost optimization** through intelligent URL deduplication and caching
+- ✅ **Performance indexes** for sub-second query response times
+- ✅ **Real-time analytics** for scraping performance monitoring
+
+#### **Core New Tables:**
+- `native_interview_experiences` - Structured forum experiences with metadata
+- `api_call_logs` - Unified logging for all API providers (Tavily, Reddit, OpenAI)  
+- `scraping_metrics` - Real-time performance and quality analytics
+- Enhanced `scraped_urls` - Native source tracking and quality scoring
+
+### 2.2 Entity Relationship Diagram
 
 ```mermaid
 erDiagram
@@ -80,10 +99,9 @@ erDiagram
     searches ||--o{ practice_sessions : generates
     searches ||--o{ cv_job_comparisons : has
     searches ||--o{ enhanced_question_banks : contains
-    searches ||--o{ interview_experiences : stores
-    searches ||--o{ tavily_searches : logs
-    searches ||--o{ openai_calls : tracks
-    searches ||--o{ function_executions : monitors
+    searches ||--o{ native_interview_experiences : stores
+    searches ||--o{ api_call_logs : tracks
+    searches ||--o{ scraping_metrics : monitors
     interview_stages ||--o{ interview_questions : has
     practice_sessions ||--o{ practice_answers : records
     interview_questions ||--o{ practice_answers : answers
@@ -1610,7 +1628,167 @@ SUPABASE_SERVICE_ROLE_KEY=<service-key>
 
 ## 11. Performance Optimization
 
-### 11.1 Frontend Optimizations
+### 11.1 Timeout Prevention & Function Orchestration
+
+The application implements comprehensive timeout handling to prevent Supabase Edge Function 504 errors and optimize microservice orchestration.
+
+#### Microservice Timeout Configuration
+```typescript
+// supabase/functions/_shared/config.ts
+RESEARCH_CONFIG.performance = {
+  timeouts: {
+    tavilySearch: 30000,    // 30 seconds per search
+    tavilyExtract: 45000,   // 45 seconds for extraction  
+    openaiCall: 60000,      // 60 seconds for AI analysis
+  },
+  
+  retries: {
+    maxRetries: 2,          // Maximum retry attempts
+    retryDelay: 1000,       // Delay between retries
+  },
+  
+  concurrency: {
+    maxParallelSearches: 12, // Maximum concurrent searches
+    maxParallelExtracts: 8,  // Maximum concurrent extractions
+  }
+};
+```
+
+#### Optimized Function Orchestration
+```typescript
+// interview-research/index.ts - Timeout prevention patterns
+async function gatherCompanyData(company: string, role?: string, country?: string, searchId?: string) {
+  try {
+    // Set timeout for company research (60 seconds)
+    const controller = new AbortController();
+    const timeoutId = setTimeout(() => controller.abort(), 60000);
+    
+    const response = await fetch(`${SUPABASE_URL}/functions/v1/company-research`, {
+      method: 'POST',
+      headers: { /* headers */ },
+      body: JSON.stringify({ company, role, country, searchId }),
+      signal: controller.signal // Abort on timeout
+    });
+
+    clearTimeout(timeoutId);
+    
+    if (response.ok) {
+      return await response.json();
+    }
+    
+    console.warn("Company research failed, continuing without data");
+    return null;
+  } catch (error) {
+    if (error.name === 'AbortError') {
+      console.warn("Company research timed out after 60 seconds, continuing without data");
+    }
+    return null; // Graceful degradation
+  }
+}
+```
+
+#### Parallel Processing Flow
+```typescript
+// Restructured for parallel processing and timeout prevention
+async function optimizedDataGathering() {
+  // Step 1: Start company research immediately (most time-consuming)
+  const companyDataPromise = gatherCompanyData(company, role, country, searchId);
+  
+  // Step 2: Run faster operations in parallel
+  const [jobRequirements, cvAnalysis] = await Promise.all([
+    gatherJobData(roleLinks || [], searchId, company, role), 
+    gatherCVData(cv || "", userId)
+  ]);
+  
+  // Step 3: Wait for company research to complete or timeout
+  const companyInsights = await companyDataPromise;
+  
+  // Step 4: Run enhanced analysis in parallel (optional optimizations)
+  const [cvJobComparison, enhancedQuestions] = await Promise.all([
+    generateCVJobComparison(searchId, userId, cvAnalysis, jobRequirements, companyInsights),
+    generateEnhancedQuestions(searchId, userId, companyInsights, jobRequirements, cvAnalysis, stages)
+  ]);
+}
+```
+
+#### API Optimization Settings
+```typescript
+// Reduced API load for faster processing
+RESEARCH_CONFIG.tavily = {
+  searchDepth: 'basic',        // Changed from 'advanced' for speed
+  maxResults: {
+    discovery: 12,             // Reduced from 20 to 12
+    extraction: 15,            // Reduced from 30 to 15
+  },
+  maxCreditsPerSearch: 30,     // Reduced credit usage
+};
+
+// Streamlined search queries (removed redundant queries)
+queryTemplates: {
+  glassdoor: [
+    '{company} {role} Interview Questions & Answers site:glassdoor.com/Interview',
+    '{company} interview process {role} 2024 2025 site:glassdoor.com',
+  ],
+  blind: [
+    '{ticker} interview {role} site:blind.teamblind.com',
+    'interview {ticker} {role} experience site:blind.teamblind.com',
+  ],
+  // Reduced from 12+ queries to 6 for faster execution
+}
+```
+
+#### Client-Side Timeout Detection
+```typescript
+// Enhanced polling with timeout detection and user feedback
+const startStatusPolling = (searchId: string) => {
+  let pollCount = 0;
+  let hasShownTimeoutWarning = false;
+  
+  const poll = async () => {
+    // Show timeout warning after 2.5 minutes
+    if (pollCount > 75 && !hasShownTimeoutWarning) {
+      hasShownTimeoutWarning = true;
+      toast({
+        title: "Research Taking Longer",
+        description: "The research is taking longer than expected. You can close this dialog and check back later.",
+        duration: 8000,
+      });
+    }
+    
+    // Auto-timeout detection after 8 minutes
+    if (pollCount > 160) {
+      setSearchStatus('failed');
+      toast({
+        title: "Research Timeout", 
+        description: "The research process has timed out. Please try again with a smaller scope.",
+        variant: "destructive",
+      });
+      return false;
+    }
+  };
+};
+```
+
+#### Progress Dialog Optimization
+```typescript
+// More realistic progress tracking that prevents stuck-at-90% issues
+useEffect(() => {
+  if (searchStatus === 'pending' || searchStatus === 'processing') {
+    interval = setInterval(() => {
+      setProgressValue(prev => {
+        // More aggressive progress for better UX
+        if (prev >= 95) return Math.min(95, prev + 0.5); // Slow increment near completion
+        if (prev >= 80) return prev + Math.random() * 2 + 1; // 80-95%
+        return prev + Math.random() * 4 + 3; // Faster increment 0-80%
+      });
+    }, 1500); // Faster updates (1.5s vs 2s)
+  } else if (searchStatus === 'completed') {
+    setProgressValue(100); // Immediate completion
+  }
+}, [searchStatus]);
+```
+
+### 11.2 Frontend Optimizations
 
 #### Bundle Optimization
 - **Code Splitting:** Route-based lazy loading
@@ -1636,7 +1814,7 @@ const expensiveValue = useMemo(() => {
 - **localStorage:** User preferences and form state
 - **Supabase:** Built-in query caching
 
-### 11.2 Database Performance
+### 11.3 Database Performance
 
 #### Query Optimization
 ```sql
@@ -1661,24 +1839,32 @@ const stagesWithQuestions = await Promise.all(
 );
 ```
 
-### 11.3 AI Performance
+### 11.4 AI Performance
 
 #### Request Optimization
 ```typescript
-// OpenAI API configuration
+// OpenAI API configuration with timeout
 {
-  model: 'gpt-4.1-2025-04-14',
+  model: 'gpt-4o',
   messages: [...],
   max_tokens: 4000,
   temperature: 0.7,
-  timeout: 30000, // 30 second timeout
+  timeout: 60000, // 60 second timeout
+  response_format: { type: "json_object" }, // Force JSON mode
 }
 ```
 
 #### Error Handling & Timeouts
-- **Timeout Handling:** 30-second timeout for AI requests
+- **Timeout Handling:** 60-second timeout for AI requests
+- **Graceful Degradation:** Continue processing without failed components
+- **User Communication:** Real-time progress indicators and timeout warnings
 - **Retry Logic:** Exponential backoff for failed requests
-- **User Communication:** Progress indicators during processing
+
+#### Performance Targets
+- **Discovery Phase**: 15-30 seconds for 12 parallel searches
+- **Extraction Phase**: 10-20 seconds for 15 URLs
+- **AI Analysis**: 5-15 seconds depending on content volume
+- **Total Duration**: Target under 2-3 minutes end-to-end (down from previous 150+ seconds timeout)
 
 ## 12. Development Environment
 

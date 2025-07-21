@@ -1281,6 +1281,165 @@ GROUP BY function_name;
 
 ## Performance Tips
 
+### Function Timeout Prevention
+The app now includes comprehensive timeout handling to prevent Supabase Edge Function 504 errors.
+
+#### Timeout Configuration
+```typescript
+// supabase/functions/_shared/config.ts - Performance configuration
+RESEARCH_CONFIG.performance = {
+  timeouts: {
+    tavilySearch: 30000,    // 30 seconds per search
+    tavilyExtract: 45000,   // 45 seconds for extraction
+    openaiCall: 60000,      // 60 seconds for AI analysis
+  },
+  
+  retries: {
+    maxRetries: 2,          // Maximum retry attempts
+    retryDelay: 1000,       // Delay between retries
+  },
+  
+  concurrency: {
+    maxParallelSearches: 12, // Maximum concurrent searches
+    maxParallelExtracts: 8,  // Maximum concurrent extractions
+  }
+};
+```
+
+#### Microservice Timeout Handling
+```typescript
+// interview-research/index.ts - Timeout prevention patterns
+async function gatherCompanyData(company: string, role?: string, country?: string, searchId?: string) {
+  try {
+    // Set timeout for company research (60 seconds)
+    const controller = new AbortController();
+    const timeoutId = setTimeout(() => controller.abort(), 60000);
+    
+    const response = await fetch(`${SUPABASE_URL}/functions/v1/company-research`, {
+      method: 'POST',
+      headers: { /* headers */ },
+      body: JSON.stringify({ company, role, country, searchId }),
+      signal: controller.signal // Abort on timeout
+    });
+
+    clearTimeout(timeoutId);
+    
+    if (response.ok) {
+      return await response.json();
+    }
+    
+    console.warn("Company research failed, continuing without data");
+    return null;
+  } catch (error) {
+    if (error.name === 'AbortError') {
+      console.warn("Company research timed out after 60 seconds, continuing without data");
+    }
+    return null; // Graceful degradation
+  }
+}
+```
+
+#### Optimized Processing Flow
+```typescript
+// Restructured for parallel processing and timeout prevention
+async function optimizedDataGathering() {
+  // Step 1: Start company research immediately (most time-consuming)
+  const companyDataPromise = gatherCompanyData(company, role, country, searchId);
+  
+  // Step 2: Run faster operations in parallel
+  const [jobRequirements, cvAnalysis] = await Promise.all([
+    gatherJobData(roleLinks || [], searchId, company, role), 
+    gatherCVData(cv || "", userId)
+  ]);
+  
+  // Step 3: Wait for company research to complete or timeout
+  const companyInsights = await companyDataPromise;
+  
+  // Step 4: Run enhanced analysis in parallel (optional optimizations)
+  const [cvJobComparison, enhancedQuestions] = await Promise.all([
+    generateCVJobComparison(searchId, userId, cvAnalysis, jobRequirements, companyInsights),
+    generateEnhancedQuestions(searchId, userId, companyInsights, jobRequirements, cvAnalysis, synthesisResult.interview_stages)
+  ]);
+}
+```
+
+#### API Optimization Settings
+```typescript
+// Reduced API load for faster processing
+RESEARCH_CONFIG.tavily = {
+  searchDepth: 'basic',        // Changed from 'advanced' for speed
+  maxResults: {
+    discovery: 12,             // Reduced from 20 to 12
+    extraction: 15,            // Reduced from 30 to 15
+  },
+  maxCreditsPerSearch: 30,     // Reduced credit usage
+};
+
+// Streamlined search queries (removed redundant queries)
+queryTemplates: {
+  glassdoor: [
+    '{company} {role} Interview Questions & Answers site:glassdoor.com/Interview',
+    '{company} interview process {role} 2024 2025 site:glassdoor.com',
+  ],
+  blind: [
+    '{ticker} interview {role} site:blind.teamblind.com',
+    'interview {ticker} {role} experience site:blind.teamblind.com',
+  ],
+  // Reduced from 12+ queries to 6 for faster execution
+}
+```
+
+#### Progress Dialog Optimization
+```typescript
+// More realistic progress tracking that prevents stuck-at-90% issues
+useEffect(() => {
+  if (searchStatus === 'pending' || searchStatus === 'processing') {
+    interval = setInterval(() => {
+      setProgressValue(prev => {
+        // More aggressive progress for better UX
+        if (prev >= 95) return Math.min(95, prev + 0.5); // Slow increment near completion
+        if (prev >= 80) return prev + Math.random() * 2 + 1; // 80-95%
+        return prev + Math.random() * 4 + 3; // Faster increment 0-80%
+      });
+    }, 1500); // Faster updates (1.5s vs 2s)
+  } else if (searchStatus === 'completed') {
+    setProgressValue(100); // Immediate completion
+  }
+}, [searchStatus]);
+```
+
+#### Client-Side Timeout Detection
+```typescript
+// Enhanced polling with timeout detection and user feedback
+const startStatusPolling = (searchId: string) => {
+  let pollCount = 0;
+  let hasShownTimeoutWarning = false;
+  
+  const poll = async () => {
+    // Show timeout warning after 2.5 minutes
+    if (pollCount > 75 && !hasShownTimeoutWarning) {
+      hasShownTimeoutWarning = true;
+      toast({
+        title: "Research Taking Longer",
+        description: "The research is taking longer than expected. You can close this dialog and check back later.",
+        duration: 8000,
+      });
+    }
+    
+    // Auto-timeout detection after 8 minutes
+    if (pollCount > 160) {
+      setSearchStatus('failed');
+      toast({
+        title: "Research Timeout",
+        description: "The research process has timed out. Please try again with a smaller scope.",
+        variant: "destructive",
+      });
+      return false;
+    }
+  };
+};
+```
+
 ### React Performance
 ```typescript
 // Use React.memo for expensive components

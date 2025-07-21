@@ -22,16 +22,16 @@ export const RESEARCH_CONFIG = {
 
   // Tavily API Configuration
   tavily: {
-    searchDepth: 'advanced' as const,
+    searchDepth: 'basic' as const,   // Changed from 'advanced' to 'basic' for faster results
     maxResults: {
-      discovery: 20,      // Results per search query in discovery phase
-      extraction: 30,     // Maximum URLs to extract content from
+      discovery: 12,      // Reduced from 20 to 12 for faster processing
+      extraction: 15,     // Reduced from 30 to 15 for faster processing
     },
     timeRange: 'year' as const,  // Focus on recent data (year/month/week/day)
     includeRawContent: true,     // Essential for deep content analysis
     
     // Credit usage limits (1 credit per search, 1 per extraction)
-    maxCreditsPerSearch: 55,     // Safety limit (20 searches + 30 extractions + buffer)
+    maxCreditsPerSearch: 30,     // Reduced limit (12 searches + 15 extractions + buffer)
   },
 
   // Search Target Configuration
@@ -85,30 +85,40 @@ export const RESEARCH_CONFIG = {
       'anthropic': 'ANTHROPIC',
     },
 
-    // Search query templates
+    // Search query templates (enhanced for forum content)
     queryTemplates: {
       glassdoor: [
         '{company} {role} Interview Questions & Answers site:glassdoor.com/Interview',
-        '{company} interview process {role} {country} 2024 2025 site:glassdoor.com',
-        '{company} interview experience {role} recent 2024 site:glassdoor.com',
-        '{company} interview rounds stages {role} site:glassdoor.com',
+        '{company} interview process {role} 2024 2025 site:glassdoor.com',
+        '"{company}" interview experience review site:glassdoor.com',
+        '{company} {role} interview difficulty rating site:glassdoor.com',
       ],
       blind: [
         '{ticker} interview {role} site:blind.teamblind.com',
         'interview {ticker} {role} experience site:blind.teamblind.com',
-        '{company} {role} interview recent site:blind.teamblind.com',
+        '"{company}" interview process rounds site:blind.teamblind.com',
+        '{ticker} {role} offer negotiation interview site:blind.teamblind.com',
+      ],
+      reddit: [
+        '{company} {role} interview experience site:reddit.com/r/cscareerquestions',
+        '{company} interview process site:reddit.com/r/ExperiencedDevs',
+        '"{company}" interview questions site:reddit.com/r/ITCareerQuestions',
+        '{company} {role} onsite interview site:reddit.com',
       ],
       international: [
         '{company} {role} interview 面试 site:1point3acres.com',
-        '{company} interview experience {role} site:1point3acres.com',
+        '{company} 面试经验 interview experience site:1point3acres.com',
+        '{company} {role} 面试题 interview questions site:1point3acres.com',
+      ],
+      technical: [
+        '{company} {role} coding interview site:leetcode.com/discuss',
+        '{company} system design interview site:interviewing.io',
+        '{company} technical interview questions site:interviewbit.com',
       ],
       general: [
         '{company} {role} interview 2024 site:levels.fyi',
-        '{company} {role} interview process site:leetcode.com',
-        '{company} {role} interview experience 2024 site:reddit.com',
-        '{company} {role} interview questions recent site:reddit.com',
-        '{company} interview process how many rounds stages',
-        '{company} what do they look for hiring criteria recent',
+        '"{company}" interview timeline process stages',
+        '{company} hiring manager interview tips advice',
       ],
     },
   },
@@ -121,14 +131,58 @@ export const RESEARCH_CONFIG = {
       contextBuilding: 32000, // Total context length for AI analysis
     },
     
-    // URL filtering for interview content
+    // URL filtering for interview content (enhanced patterns)
     interviewUrlPatterns: [
       '/Interview',           // Glassdoor interview pages
       'blind.teamblind.com',  // Blind discussion boards
       '1point3acres.com',     // International forum
       'levels.fyi',           // Compensation and interview data
+      'reddit.com/r/cscareerquestions', // Reddit CS careers
+      'reddit.com/r/ExperiencedDevs',   // Experienced developers
+      'reddit.com/r/ITCareerQuestions', // IT career questions
+      'leetcode.com/discuss', // LeetCode discussions
+      'interviewing.io',      // Interview practice platform
       'interview',            // General interview keyword in URL/content
     ],
+    
+    // Enhanced content quality patterns for better filtering
+    experienceQualityPatterns: [
+      // High-quality indicators
+      'i interviewed at',
+      'just finished my',
+      'my interview experience',
+      'went through the process',
+      'interview rounds were',
+      'they asked me',
+      'the interviewer',
+      'phone screen',
+      'onsite interview',
+      'virtual interview',
+      'coding challenge',
+      'system design',
+      'behavioral questions',
+      'technical questions',
+      'final round',
+      'offer negotiation',
+      'interview feedback',
+      'preparation tips',
+      'what to expect',
+      'interview format',
+      'difficulty level',
+      'interview duration',
+      'follow up questions',
+      'rejection reason',
+      'success stories',
+    ],
+    
+    // Forum-specific content patterns
+    forumContentPatterns: {
+      glassdoor: ['interview rating', 'difficulty rating', 'overall experience'],
+      blind: ['TC:', 'total compensation', 'interview loop', 'hiring committee'],
+      reddit: ['[Update]', '[Experience]', 'AMA', 'Ask me anything'],
+      leetcode: ['Interview Question', 'Company Tag', 'Difficulty:'],
+      international: ['面试', '题目', '经验', '分享'],
+    },
   },
 
   // Performance and Reliability Configuration
@@ -176,6 +230,7 @@ export const RESEARCH_CONFIG = {
 
   // Feature Flags
   features: {
+    enableHybridScraping: true,     // Use hybrid native + Tavily approach (recommended)
     enableDeepExtraction: true,     // Use Tavily extract API for full content
     enableCompanyTickers: true,     // Use ticker symbols for Blind searches
     enableInternationalSearch: true, // Include 1point3acres and international sites
@@ -183,6 +238,7 @@ export const RESEARCH_CONFIG = {
     enableInterviewStageExtraction: true, // Extract stages from candidate reports
     enableJsonMode: true,           // Force JSON responses from OpenAI
     enableFallbackResponses: true,  // Provide fallback data when APIs fail
+    enableNativeScrapingOnly: false, // Use only native scraping (no Tavily discovery)
   },
 
   // Development and Testing Configuration
@@ -236,6 +292,16 @@ export const getAllSearchQueries = (company: string, role?: string, country?: st
   
   // Add Blind queries
   queryTemplates.blind.forEach(template => {
+    queries.push(buildSearchQuery(template, company, role, country, ticker));
+  });
+  
+  // Add Reddit queries for forum content
+  queryTemplates.reddit.forEach(template => {
+    queries.push(buildSearchQuery(template, company, role, country, ticker));
+  });
+  
+  // Add technical platform queries
+  queryTemplates.technical.forEach(template => {
     queries.push(buildSearchQuery(template, company, role, country, ticker));
   });
   

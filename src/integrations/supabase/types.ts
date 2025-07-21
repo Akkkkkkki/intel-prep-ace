@@ -39,6 +39,62 @@ export type Database = {
   }
   public: {
     Tables: {
+      api_call_logs: {
+        Row: {
+          api_method: string
+          api_provider: string
+          created_at: string
+          credits_used: number | null
+          duration_ms: number | null
+          error_message: string | null
+          estimated_cost_usd: number | null
+          id: string
+          request_summary: Json | null
+          response_status: number
+          results_count: number | null
+          search_id: string | null
+          success: boolean | null
+        }
+        Insert: {
+          api_method: string
+          api_provider: string
+          created_at?: string
+          credits_used?: number | null
+          duration_ms?: number | null
+          error_message?: string | null
+          estimated_cost_usd?: number | null
+          id?: string
+          request_summary?: Json | null
+          response_status: number
+          results_count?: number | null
+          search_id?: string | null
+          success?: boolean | null
+        }
+        Update: {
+          api_method?: string
+          api_provider?: string
+          created_at?: string
+          credits_used?: number | null
+          duration_ms?: number | null
+          error_message?: string | null
+          estimated_cost_usd?: number | null
+          id?: string
+          request_summary?: Json | null
+          response_status?: number
+          results_count?: number | null
+          search_id?: string | null
+          success?: boolean | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "api_call_logs_search_id_fkey"
+            columns: ["search_id"]
+            isOneToOne: false
+            referencedRelation: "searches"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       cv_job_comparisons: {
         Row: {
           created_at: string
@@ -339,6 +395,95 @@ export type Database = {
           },
         ]
       }
+      native_interview_experiences: {
+        Row: {
+          ai_summary: string | null
+          author_info: Json | null
+          company_name: string
+          content: string
+          content_processed: boolean | null
+          created_at: string
+          difficulty_rating: string | null
+          engagement_metrics: Json | null
+          experience_type: string | null
+          id: string
+          interview_stages: string[] | null
+          offer_outcome: string | null
+          platform: string
+          platform_metadata: Json | null
+          posted_date: string | null
+          preparation_tips: string[] | null
+          quality_score: number | null
+          questions_asked: string[] | null
+          role_title: string | null
+          salary_mentioned: boolean | null
+          scraped_at: string
+          search_id: string
+          source_url: string
+          title: string
+        }
+        Insert: {
+          ai_summary?: string | null
+          author_info?: Json | null
+          company_name: string
+          content: string
+          content_processed?: boolean | null
+          created_at?: string
+          difficulty_rating?: string | null
+          engagement_metrics?: Json | null
+          experience_type?: string | null
+          id?: string
+          interview_stages?: string[] | null
+          offer_outcome?: string | null
+          platform: string
+          platform_metadata?: Json | null
+          posted_date?: string | null
+          preparation_tips?: string[] | null
+          quality_score?: number | null
+          questions_asked?: string[] | null
+          role_title?: string | null
+          salary_mentioned?: boolean | null
+          scraped_at?: string
+          search_id: string
+          source_url: string
+          title: string
+        }
+        Update: {
+          ai_summary?: string | null
+          author_info?: Json | null
+          company_name?: string
+          content?: string
+          content_processed?: boolean | null
+          created_at?: string
+          difficulty_rating?: string | null
+          engagement_metrics?: Json | null
+          experience_type?: string | null
+          id?: string
+          interview_stages?: string[] | null
+          offer_outcome?: string | null
+          platform?: string
+          platform_metadata?: Json | null
+          posted_date?: string | null
+          preparation_tips?: string[] | null
+          quality_score?: number | null
+          questions_asked?: string[] | null
+          role_title?: string | null
+          salary_mentioned?: boolean | null
+          scraped_at?: string
+          search_id?: string
+          source_url?: string
+          title?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "native_interview_experiences_search_id_fkey"
+            columns: ["search_id"]
+            isOneToOne: false
+            referencedRelation: "searches"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       openai_calls: {
         Row: {
           completion_tokens: number | null
@@ -505,6 +650,60 @@ export type Database = {
         }
         Relationships: []
       }
+      research_cache: {
+        Row: {
+          cache_freshness_hours: number | null
+          cache_hits: number | null
+          cache_key: string
+          company_insights: Json
+          company_name: string
+          confidence_score: number | null
+          content_version: number | null
+          country: string | null
+          created_at: string
+          id: string
+          last_accessed_at: string
+          raw_search_data: Json | null
+          role_title: string | null
+          source_urls: string[] | null
+          updated_at: string
+        }
+        Insert: {
+          cache_freshness_hours?: number | null
+          cache_hits?: number | null
+          cache_key: string
+          company_insights: Json
+          company_name: string
+          confidence_score?: number | null
+          content_version?: number | null
+          country?: string | null
+          created_at?: string
+          id?: string
+          last_accessed_at?: string
+          raw_search_data?: Json | null
+          role_title?: string | null
+          source_urls?: string[] | null
+          updated_at?: string
+        }
+        Update: {
+          cache_freshness_hours?: number | null
+          cache_hits?: number | null
+          cache_key?: string
+          company_insights?: Json
+          company_name?: string
+          confidence_score?: number | null
+          content_version?: number | null
+          country?: string | null
+          created_at?: string
+          id?: string
+          last_accessed_at?: string
+          raw_search_data?: Json | null
+          role_title?: string | null
+          source_urls?: string[] | null
+          updated_at?: string
+        }
+        Relationships: []
+      }
       resumes: {
         Row: {
           content: string
@@ -533,6 +732,256 @@ export type Database = {
         Relationships: [
           {
             foreignKeyName: "resumes_search_id_fkey"
+            columns: ["search_id"]
+            isOneToOne: false
+            referencedRelation: "searches"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      scraped_content: {
+        Row: {
+          ai_summary: string | null
+          content_source: string | null
+          created_at: string
+          extracted_insights: string[] | null
+          extracted_questions: string[] | null
+          full_content: string | null
+          id: string
+          language: string | null
+          processing_status: string | null
+          raw_html: string | null
+          scraped_url_id: string
+          structured_data: Json | null
+          updated_at: string
+          word_count: number | null
+        }
+        Insert: {
+          ai_summary?: string | null
+          content_source?: string | null
+          created_at?: string
+          extracted_insights?: string[] | null
+          extracted_questions?: string[] | null
+          full_content?: string | null
+          id?: string
+          language?: string | null
+          processing_status?: string | null
+          raw_html?: string | null
+          scraped_url_id: string
+          structured_data?: Json | null
+          updated_at?: string
+          word_count?: number | null
+        }
+        Update: {
+          ai_summary?: string | null
+          content_source?: string | null
+          created_at?: string
+          extracted_insights?: string[] | null
+          extracted_questions?: string[] | null
+          full_content?: string | null
+          id?: string
+          language?: string | null
+          processing_status?: string | null
+          raw_html?: string | null
+          scraped_url_id?: string
+          structured_data?: Json | null
+          updated_at?: string
+          word_count?: number | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "scraped_content_scraped_url_id_fkey"
+            columns: ["scraped_url_id"]
+            isOneToOne: false
+            referencedRelation: "scraped_urls"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      scraped_urls: {
+        Row: {
+          company_name: string
+          content_quality_score: number | null
+          content_staleness_days: number | null
+          content_summary: string | null
+          content_type: string | null
+          country: string | null
+          created_at: string
+          domain: string
+          experience_metadata: Json | null
+          extraction_method: string | null
+          first_scraped_at: string
+          id: string
+          last_reused_at: string | null
+          last_validated_at: string
+          platform_specific_data: Json | null
+          role_title: string | null
+          scraping_method: string | null
+          times_reused: number | null
+          title: string | null
+          updated_at: string
+          url: string
+          url_hash: string
+        }
+        Insert: {
+          company_name: string
+          content_quality_score?: number | null
+          content_staleness_days?: number | null
+          content_summary?: string | null
+          content_type?: string | null
+          country?: string | null
+          created_at?: string
+          domain: string
+          experience_metadata?: Json | null
+          extraction_method?: string | null
+          first_scraped_at?: string
+          id?: string
+          last_reused_at?: string | null
+          last_validated_at?: string
+          platform_specific_data?: Json | null
+          role_title?: string | null
+          scraping_method?: string | null
+          times_reused?: number | null
+          title?: string | null
+          updated_at?: string
+          url: string
+          url_hash: string
+        }
+        Update: {
+          company_name?: string
+          content_quality_score?: number | null
+          content_staleness_days?: number | null
+          content_summary?: string | null
+          content_type?: string | null
+          country?: string | null
+          created_at?: string
+          domain?: string
+          experience_metadata?: Json | null
+          extraction_method?: string | null
+          first_scraped_at?: string
+          id?: string
+          last_reused_at?: string | null
+          last_validated_at?: string
+          platform_specific_data?: Json | null
+          role_title?: string | null
+          scraping_method?: string | null
+          times_reused?: number | null
+          title?: string | null
+          updated_at?: string
+          url?: string
+          url_hash?: string
+        }
+        Relationships: []
+      }
+      scraping_metrics: {
+        Row: {
+          average_quality_score: number | null
+          blind_experiences: number | null
+          cache_hit_rate: number | null
+          cache_hits: number | null
+          created_at: string
+          deduplication_removals: number | null
+          glassdoor_experiences: number | null
+          high_quality_experiences: number | null
+          id: string
+          leetcode_experiences: number | null
+          other_platform_experiences: number | null
+          reddit_experiences: number | null
+          search_id: string
+          total_api_calls: number | null
+          total_api_cost_usd: number | null
+          total_execution_time_ms: number | null
+          total_native_experiences: number | null
+          total_tavily_results: number | null
+        }
+        Insert: {
+          average_quality_score?: number | null
+          blind_experiences?: number | null
+          cache_hit_rate?: number | null
+          cache_hits?: number | null
+          created_at?: string
+          deduplication_removals?: number | null
+          glassdoor_experiences?: number | null
+          high_quality_experiences?: number | null
+          id?: string
+          leetcode_experiences?: number | null
+          other_platform_experiences?: number | null
+          reddit_experiences?: number | null
+          search_id: string
+          total_api_calls?: number | null
+          total_api_cost_usd?: number | null
+          total_execution_time_ms?: number | null
+          total_native_experiences?: number | null
+          total_tavily_results?: number | null
+        }
+        Update: {
+          average_quality_score?: number | null
+          blind_experiences?: number | null
+          cache_hit_rate?: number | null
+          cache_hits?: number | null
+          created_at?: string
+          deduplication_removals?: number | null
+          glassdoor_experiences?: number | null
+          high_quality_experiences?: number | null
+          id?: string
+          leetcode_experiences?: number | null
+          other_platform_experiences?: number | null
+          reddit_experiences?: number | null
+          search_id?: string
+          total_api_calls?: number | null
+          total_api_cost_usd?: number | null
+          total_execution_time_ms?: number | null
+          total_native_experiences?: number | null
+          total_tavily_results?: number | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "scraping_metrics_search_id_fkey"
+            columns: ["search_id"]
+            isOneToOne: true
+            referencedRelation: "searches"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      search_content_usage: {
+        Row: {
+          contributed_to_analysis: boolean | null
+          created_at: string
+          id: string
+          relevance_score: number | null
+          scraped_url_id: string
+          search_id: string
+          usage_type: string
+        }
+        Insert: {
+          contributed_to_analysis?: boolean | null
+          created_at?: string
+          id?: string
+          relevance_score?: number | null
+          scraped_url_id: string
+          search_id: string
+          usage_type: string
+        }
+        Update: {
+          contributed_to_analysis?: boolean | null
+          created_at?: string
+          id?: string
+          relevance_score?: number | null
+          scraped_url_id?: string
+          search_id?: string
+          usage_type?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "search_content_usage_scraped_url_id_fkey"
+            columns: ["scraped_url_id"]
+            isOneToOne: false
+            referencedRelation: "scraped_urls"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "search_content_usage_search_id_fkey"
             columns: ["search_id"]
             isOneToOne: false
             referencedRelation: "searches"
@@ -585,73 +1034,35 @@ export type Database = {
         }
         Relationships: []
       }
-      tavily_searches: {
+      url_deduplication_metrics: {
         Row: {
-          api_type: string
-          created_at: string
-          credits_used: number | null
-          endpoint_url: string
-          error_message: string | null
+          api_calls_saved: number | null
+          cache_hit_count: number | null
+          created_at: string | null
           id: string
-          include_domains: string[] | null
-          max_results: number | null
-          query_text: string | null
-          request_duration_ms: number | null
-          request_payload: Json
-          response_payload: Json | null
-          response_status: number
-          results_count: number | null
-          search_depth: string | null
+          response_time_ms: number | null
           search_id: string | null
-          user_id: string | null
+          total_urls_needed: number | null
         }
         Insert: {
-          api_type: string
-          created_at?: string
-          credits_used?: number | null
-          endpoint_url: string
-          error_message?: string | null
+          api_calls_saved?: number | null
+          cache_hit_count?: number | null
+          created_at?: string | null
           id?: string
-          include_domains?: string[] | null
-          max_results?: number | null
-          query_text?: string | null
-          request_duration_ms?: number | null
-          request_payload: Json
-          response_payload?: Json | null
-          response_status: number
-          results_count?: number | null
-          search_depth?: string | null
+          response_time_ms?: number | null
           search_id?: string | null
-          user_id?: string | null
+          total_urls_needed?: number | null
         }
         Update: {
-          api_type?: string
-          created_at?: string
-          credits_used?: number | null
-          endpoint_url?: string
-          error_message?: string | null
+          api_calls_saved?: number | null
+          cache_hit_count?: number | null
+          created_at?: string | null
           id?: string
-          include_domains?: string[] | null
-          max_results?: number | null
-          query_text?: string | null
-          request_duration_ms?: number | null
-          request_payload?: Json
-          response_payload?: Json | null
-          response_status?: number
-          results_count?: number | null
-          search_depth?: string | null
+          response_time_ms?: number | null
           search_id?: string | null
-          user_id?: string | null
+          total_urls_needed?: number | null
         }
-        Relationships: [
-          {
-            foreignKeyName: "tavily_searches_search_id_fkey"
-            columns: ["search_id"]
-            isOneToOne: false
-            referencedRelation: "searches"
-            referencedColumns: ["id"]
-          },
-        ]
+        Relationships: []
       }
     }
     Views: {
@@ -666,6 +1077,90 @@ export type Database = {
         }
         Returns: number
       }
+      cleanup_old_cache_data: {
+        Args: { p_max_age_days?: number }
+        Returns: number
+      }
+      find_reusable_urls: {
+        Args: {
+          p_company: string
+          p_role?: string
+          p_country?: string
+          p_max_age_days?: number
+          p_min_quality_score?: number
+        }
+        Returns: {
+          url: string
+          domain: string
+          title: string
+          content_type: string
+          content_quality_score: number
+          times_reused: number
+          days_old: number
+          has_content: boolean
+        }[]
+      }
+      find_reusable_urls_fast: {
+        Args: {
+          p_company: string
+          p_role?: string
+          p_country?: string
+          p_max_age_days?: number
+          p_min_quality_score?: number
+        }
+        Returns: {
+          url: string
+          domain: string
+          title: string
+          content_type: string
+          content_quality_score: number
+          times_reused: number
+        }[]
+      }
+      find_similar_experiences: {
+        Args: {
+          p_company: string
+          p_role?: string
+          p_content_sample?: string
+          p_similarity_threshold?: number
+        }
+        Returns: {
+          id: string
+          platform: string
+          title: string
+          similarity_score: number
+        }[]
+      }
+      generate_cache_key: {
+        Args: { p_company: string; p_role?: string; p_country?: string }
+        Returns: string
+      }
+      get_cached_content_simple: {
+        Args: { p_urls: string[] }
+        Returns: {
+          url: string
+          content: string
+          title: string
+          content_type: string
+        }[]
+      }
+      get_cached_research: {
+        Args: {
+          p_company: string
+          p_role?: string
+          p_country?: string
+          p_max_age_hours?: number
+        }
+        Returns: {
+          id: string
+          company_insights: Json
+          raw_search_data: Json
+          source_urls: string[]
+          cache_freshness_hours: number
+          confidence_score: number
+          cache_hits: number
+        }[]
+      }
       get_enhanced_search_results: {
         Args: { p_search_id: string }
         Returns: {
@@ -676,6 +1171,44 @@ export type Database = {
           enhanced_questions: Json
           interview_experiences: Json
         }[]
+      }
+      get_excluded_domains_for_search: {
+        Args: {
+          p_company: string
+          p_role?: string
+          p_country?: string
+          p_min_reuse_count?: number
+        }
+        Returns: string[]
+      }
+      get_hybrid_search_results: {
+        Args: { p_search_id: string }
+        Returns: {
+          search_data: Json
+          interview_stages: Json
+          native_experiences: Json
+          scraping_metrics: Json
+          cv_job_comparison: Json
+          enhanced_questions: Json
+        }[]
+      }
+      get_platform_scraping_stats: {
+        Args: { p_days_back?: number }
+        Returns: {
+          platform: string
+          total_experiences: number
+          avg_quality_score: number
+          total_searches: number
+          avg_experiences_per_search: number
+        }[]
+      }
+      increment_cache_access: {
+        Args: { p_cache_id: string }
+        Returns: undefined
+      }
+      increment_url_reuse: {
+        Args: { p_url_id: string }
+        Returns: undefined
       }
     }
     Enums: {

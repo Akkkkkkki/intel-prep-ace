@@ -82,10 +82,14 @@ interface AIResearchOutput {
   preparation_priorities: string[];
 }
 
-// Call other microservices for data gathering
+// Call other microservices for data gathering with timeout handling
 async function gatherCompanyData(company: string, role?: string, country?: string, searchId?: string) {
   try {
     console.log("Calling company-research function...");
+    
+    // Set a timeout for the company research call (60 seconds)
+    const controller = new AbortController();
+    const timeoutId = setTimeout(() => controller.abort(), 60000);
     
     const response = await fetch(`${Deno.env.get("SUPABASE_URL")}/functions/v1/company-research`, {
       method: 'POST',
@@ -99,7 +103,10 @@ async function gatherCompanyData(company: string, role?: string, country?: strin
         country,
         searchId
       }),
+      signal: controller.signal
     });
+
+    clearTimeout(timeoutId);
 
     if (response.ok) {
       const result = await response.json();
@@ -109,7 +116,11 @@ async function gatherCompanyData(company: string, role?: string, country?: strin
     console.warn("Company research failed, continuing without data");
     return null;
   } catch (error) {
-    console.error("Error calling company-research:", error);
+    if (error.name === 'AbortError') {
+      console.warn("Company research timed out after 60 seconds, continuing without data");
+    } else {
+      console.error("Error calling company-research:", error);
+    }
     return null;
   }
 }
@@ -123,6 +134,10 @@ async function gatherJobData(roleLinks: string[], searchId: string, company?: st
   try {
     console.log("Calling job-analysis function...");
     
+    // Set a timeout for the job analysis call (30 seconds)
+    const controller = new AbortController();
+    const timeoutId = setTimeout(() => controller.abort(), 30000);
+    
     const response = await fetch(`${Deno.env.get("SUPABASE_URL")}/functions/v1/job-analysis`, {
       method: 'POST',
       headers: {
@@ -135,7 +150,10 @@ async function gatherJobData(roleLinks: string[], searchId: string, company?: st
         company,
         role
       }),
+      signal: controller.signal
     });
+
+    clearTimeout(timeoutId);
 
     if (response.ok) {
       const result = await response.json();
@@ -145,7 +163,11 @@ async function gatherJobData(roleLinks: string[], searchId: string, company?: st
     console.warn("Job analysis failed, continuing without data");
     return null;
   } catch (error) {
-    console.error("Error calling job-analysis:", error);
+    if (error.name === 'AbortError') {
+      console.warn("Job analysis timed out after 30 seconds, continuing without data");
+    } else {
+      console.error("Error calling job-analysis:", error);
+    }
     return null;
   }
 }
@@ -159,6 +181,10 @@ async function gatherCVData(cv: string, userId: string) {
   try {
     console.log("Calling cv-analysis function...");
     
+    // Set a timeout for the CV analysis call (20 seconds)
+    const controller = new AbortController();
+    const timeoutId = setTimeout(() => controller.abort(), 20000);
+    
     const response = await fetch(`${Deno.env.get("SUPABASE_URL")}/functions/v1/cv-analysis`, {
       method: 'POST',
       headers: {
@@ -169,7 +195,10 @@ async function gatherCVData(cv: string, userId: string) {
         cvText: cv,
         userId
       }),
+      signal: controller.signal
     });
+
+    clearTimeout(timeoutId);
 
     if (response.ok) {
       const result = await response.json();
@@ -179,7 +208,11 @@ async function gatherCVData(cv: string, userId: string) {
     console.warn("CV analysis failed, continuing without data");
     return null;
   } catch (error) {
-    console.error("Error calling cv-analysis:", error);
+    if (error.name === 'AbortError') {
+      console.warn("CV analysis timed out after 20 seconds, continuing without data");
+    } else {
+      console.error("Error calling cv-analysis:", error);
+    }
     return null;
   }
 }
@@ -539,27 +572,29 @@ serve(async (req) => {
 
     console.log("Starting interview synthesis for", company, role || "");
 
-    // Step 1: Gather data from microservices (can run in parallel)
-    logger.log('STEP_START', 'DATA_GATHERING', { step: 1, description: 'Gathering data from microservices' });
-    console.log("Gathering data from microservices...");
+    // Step 1: Start company research immediately (most time-consuming)
+    logger.log('STEP_START', 'DATA_GATHERING', { step: 1, description: 'Starting company research' });
+    console.log("Starting company research...");
     
-    const startTime = Date.now();
-    const [companyInsights, jobRequirements, cvAnalysis] = await Promise.all([
-      gatherCompanyData(company, role, country, searchId),
+    const companyDataPromise = gatherCompanyData(company, role, country, searchId);
+    
+    // Step 2: Run faster operations in parallel
+    const [jobRequirements, cvAnalysis] = await Promise.all([
       gatherJobData(roleLinks || [], searchId, company, role), 
       gatherCVData(cv || "", userId)
     ]);
-    const duration = Date.now() - startTime;
+    
+    // Step 3: Wait for company research to complete or timeout
+    const companyInsights = await companyDataPromise;
     
     logger.log('DATA_GATHERING_COMPLETE', 'MICROSERVICES', { 
-      duration,
       companyInsightsFound: !!companyInsights,
       jobRequirementsFound: !!jobRequirements,
       cvAnalysisFound: !!cvAnalysis,
       companyInterviewStages: companyInsights?.interview_stages?.length || 0
     });
 
-    // Step 2: Conduct AI synthesis to generate final outputs
+    // Step 4: Conduct AI synthesis (must have company data to proceed effectively)
     console.log("Conducting AI synthesis...");
     const synthesisResult = await conductInterviewSynthesis(
       company, 
@@ -571,26 +606,25 @@ serve(async (req) => {
       openaiApiKey
     );
 
-    // Step 3: Generate enhanced CV-Job comparison
-    console.log("Generating CV-Job comparison...");
-    const cvJobComparison = await generateCVJobComparison(
-      searchId,
-      userId,
-      cvAnalysis?.aiAnalysis || cvAnalysis, // Use aiAnalysis for processing
-      jobRequirements,
-      companyInsights
-    );
-
-    // Step 4: Generate enhanced question bank for each stage
-    console.log("Generating enhanced question bank...");
-    const enhancedQuestions = await generateEnhancedQuestions(
-      searchId,
-      userId,
-      companyInsights,
-      jobRequirements,
-      cvAnalysis?.aiAnalysis || cvAnalysis, // Use aiAnalysis for processing
-      synthesisResult.interview_stages
-    );
+    // Step 5: Run comparison and question generation in parallel (optional enhancements)
+    console.log("Generating enhanced analysis...");
+    const [cvJobComparison, enhancedQuestions] = await Promise.all([
+      generateCVJobComparison(
+        searchId,
+        userId,
+        cvAnalysis?.aiAnalysis || cvAnalysis,
+        jobRequirements,
+        companyInsights
+      ),
+      generateEnhancedQuestions(
+        searchId,
+        userId,
+        companyInsights,
+        jobRequirements,
+        cvAnalysis?.aiAnalysis || cvAnalysis,
+        synthesisResult.interview_stages
+      )
+    ]);
 
     console.log("Storing final results...");
 
@@ -676,56 +710,72 @@ serve(async (req) => {
 
     // Step 7: Store enhanced question bank and comparison data
     if (cvJobComparison) {
-      await supabase
-        .from("cv_job_comparisons")
-        .insert({
-          search_id: searchId,
-          user_id: userId,
-          skill_gap_analysis: cvJobComparison.skill_gap_analysis,
-          experience_gap_analysis: cvJobComparison.experience_gap_analysis,
-          personalized_story_bank: cvJobComparison.personalized_story_bank,
-          interview_prep_strategy: cvJobComparison.interview_prep_strategy,
-          overall_fit_score: cvJobComparison.overall_fit_score,
-          preparation_priorities: cvJobComparison.preparation_priorities
-        });
+      try {
+        await supabase
+          .from("cv_job_comparisons")
+          .upsert({
+            search_id: searchId,
+            user_id: userId,
+            skill_gap_analysis: cvJobComparison.skill_gap_analysis,
+            experience_gap_analysis: cvJobComparison.experience_gap_analysis,
+            personalized_story_bank: cvJobComparison.personalized_story_bank,
+            interview_prep_strategy: cvJobComparison.interview_prep_strategy,
+            overall_fit_score: cvJobComparison.overall_fit_score,
+            preparation_priorities: cvJobComparison.preparation_priorities
+          }, {
+            onConflict: 'search_id'
+          });
+      } catch (dbError) {
+        console.warn("Failed to save CV job comparison:", dbError);
+      }
     }
 
     // Store enhanced question banks for each stage
     if (enhancedQuestions && enhancedQuestions.length > 0) {
       for (const stageQuestions of enhancedQuestions) {
-        await supabase
-          .from("enhanced_question_banks")
-          .insert({
-            search_id: searchId,
-            user_id: userId,
-            interview_stage: stageQuestions.stage,
-            behavioral_questions: stageQuestions.questions.behavioral_questions || [],
-            technical_questions: stageQuestions.questions.technical_questions || [],
-            situational_questions: stageQuestions.questions.situational_questions || [],
-            company_specific_questions: stageQuestions.questions.company_specific_questions || [],
-            role_specific_questions: stageQuestions.questions.role_specific_questions || [],
-            experience_based_questions: stageQuestions.questions.experience_based_questions || [],
-            cultural_fit_questions: stageQuestions.questions.cultural_fit_questions || [],
-            generation_context: {
-              company_insights: !!companyInsights,
-              job_requirements: !!jobRequirements,
-              cv_analysis: !!cvAnalysis
-            }
-          });
+        try {
+          await supabase
+            .from("enhanced_question_banks")
+            .upsert({
+              search_id: searchId,
+              user_id: userId,
+              interview_stage: stageQuestions.stage,
+              behavioral_questions: stageQuestions.questions.behavioral_questions || [],
+              technical_questions: stageQuestions.questions.technical_questions || [],
+              situational_questions: stageQuestions.questions.situational_questions || [],
+              company_specific_questions: stageQuestions.questions.company_specific_questions || [],
+              role_specific_questions: stageQuestions.questions.role_specific_questions || [],
+              experience_based_questions: stageQuestions.questions.experience_based_questions || [],
+              cultural_fit_questions: stageQuestions.questions.cultural_fit_questions || [],
+              generation_context: {
+                company_insights: !!companyInsights,
+                job_requirements: !!jobRequirements,
+                cv_analysis: !!cvAnalysis
+              }
+            }, {
+              onConflict: 'search_id,interview_stage'
+            });
+        } catch (dbError) {
+          console.warn(`Failed to save enhanced questions for stage ${stageQuestions.stage}:`, dbError);
+        }
       }
     }
 
     // Step 8: Update search status to completed
-    await supabase
-      .from("searches")
-      .update({ 
-        search_status: "completed",
-        cv_job_comparison: cvJobComparison,
-        enhanced_question_bank: enhancedQuestions,
-        preparation_priorities: cvJobComparison?.preparation_priorities || [],
-        overall_fit_score: cvJobComparison?.overall_fit_score || 0
-      })
-      .eq("id", searchId);
+    try {
+      await supabase
+        .from("searches")
+        .update({ 
+          search_status: "completed",
+          cv_job_comparison: cvJobComparison,
+          enhanced_question_bank: enhancedQuestions,
+          preparation_priorities: cvJobComparison?.preparation_priorities || [],
+          overall_fit_score: cvJobComparison?.overall_fit_score || 0
+        })
+        .eq("id", searchId);
+    } catch (updateError) {
+      console.warn("Failed to update search status:", updateError);
+    }
 
     console.log("Interview synthesis completed successfully");
 
@@ -747,8 +797,8 @@ serve(async (req) => {
 
     logger.logFunctionEnd(true, responseData);
     
-    // Save logs to file for debugging
-    await logger.saveToFile();
+    // Temporarily disable file logging to avoid any issues
+    // await logger.saveToFile();
 
     return new Response(
       JSON.stringify(responseData),

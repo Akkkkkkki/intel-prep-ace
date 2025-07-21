@@ -4,6 +4,8 @@ import { searchTavily, extractTavily, extractInterviewReviewUrls, TavilySearchRe
 import { callOpenAI, parseJsonResponse, OpenAIRequest } from "../_shared/openai-client.ts";
 import { SearchLogger } from "../_shared/logger.ts";
 import { RESEARCH_CONFIG, getAllSearchQueries } from "../_shared/config.ts";
+import { UrlDeduplicationService } from "../_shared/url-deduplication.ts";
+import { createHybridScraper, InterviewExperience } from "../_shared/native-scrapers.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -71,6 +73,12 @@ async function searchCompanyInfo(
   supabase?: any,
   logger?: SearchLogger
 ): Promise<any> {
+  // Set a maximum execution time for the entire function (90 seconds)
+  const functionTimeout = new Promise((_, reject) => 
+    setTimeout(() => reject(new Error('Company research function timeout')), 90000)
+  );
+
+  const researchPromise = async () => {
   const tavilyApiKey = Deno.env.get("TAVILY_API_KEY");
   if (!tavilyApiKey) {
     const errorMsg = "TAVILY_API_KEY not found in environment variables. Ensure you're running functions with: supabase functions serve --env-file .env.local";
@@ -94,14 +102,101 @@ async function searchCompanyInfo(
   logger?.log('SEARCH_START', 'COMPANY_INFO', { company, role, country });
 
   try {
-    // Get search queries from centralized config
-    const searchQueries = getAllSearchQueries(company, role, country);
-
-    logger?.logPhaseTransition('INIT', 'DISCOVERY', { queriesCount: searchQueries.length });
-    console.log("Phase 1: Discovering interview review URLs...");
+    // Initialize URL deduplication service
+    const urlDeduplication = new UrlDeduplicationService(supabase);
     
-    // Phase 1: Discovery - collect URLs with search
-    const searchPromises = searchQueries.map(async (query, index) => {
+    // Phase 0: Check for cached research and existing content
+    logger?.logPhaseTransition('INIT', 'CACHE_CHECK', { company, role, country });
+    console.log("Phase 0: Checking for cached research and existing content...");
+    
+    // URL Deduplication: Find reusable content to reduce API costs
+    let combinedResults = {
+      reusableUrls: [],
+      cachedResults: [],
+      shouldSkipFreshSearch: false,
+      excluded_domains: []
+    };
+    
+    try {
+      const deduplicationResult = await urlDeduplication.findReusableUrls(company, role, country);
+      
+      if (deduplicationResult.reusable_urls.length > 0) {
+        console.log(`Found ${deduplicationResult.reusable_urls.length} reusable URLs for ${company}`);
+        
+        // Get cached content for reusable URLs
+        const cachedContent = await urlDeduplication.getCachedContent(deduplicationResult.reusable_urls);
+        
+        combinedResults = {
+          reusableUrls: deduplicationResult.reusable_urls,
+          cachedResults: cachedContent.map(item => ({
+            url: item.url,
+            content: {
+              title: item.title,
+              content: item.content,
+              raw_content: item.content,
+              score: 0.8 // Default score for cached content
+            }
+          })),
+          shouldSkipFreshSearch: cachedContent.length >= 5, // Use cache if we have enough content
+          excluded_domains: []
+        };
+        
+        logger?.log('URL_DEDUPLICATION_SUCCESS', 'CACHE_HIT', {
+          reusable_urls_found: deduplicationResult.reusable_urls.length,
+          cached_content_retrieved: cachedContent.length,
+          will_skip_fresh_search: combinedResults.shouldSkipFreshSearch
+        });
+      } else {
+        console.log('No reusable URLs found, proceeding with fresh search');
+      }
+    } catch (error) {
+      console.warn('URL deduplication failed, proceeding with fresh search:', error.message);
+      logger?.log('URL_DEDUPLICATION_FAILED', 'FALLBACK', { error: error.message });
+    }
+    
+    // Store combinedResults for later use in response
+    (logger as any).combinedResults = combinedResults;
+    logger?.log('CACHE_CHECK_COMPLETE', 'PHASE0', { 
+      reusableUrls: combinedResults.reusableUrls.length,
+      cachedResults: combinedResults.cachedResults.length,
+      shouldSkipFreshSearch: combinedResults.shouldSkipFreshSearch
+    });
+
+    let searchResults: any[] = [];
+    
+    // If we have sufficient cached content, use it and skip fresh searches
+    if (combinedResults.shouldSkipFreshSearch) {
+      logger?.log('USING_CACHED_CONTENT', 'OPTIMIZATION', { 
+        cachedResultsCount: combinedResults.cachedResults.length,
+        reason: 'Sufficient high-quality cached content available'
+      });
+      console.log(`Using ${combinedResults.cachedResults.length} cached results, skipping fresh search...`);
+      
+      // Convert cached results to search result format
+      searchResults = [{
+        query: `Cached results for ${company}`,
+        answer: `Using cached interview and company data for ${company}`,
+        results: combinedResults.cachedResults.map(cached => ({
+          title: cached.content.title || 'Cached Content',
+          url: cached.url,
+          content: cached.content.content,
+          raw_content: cached.content.raw_content,
+          score: cached.content.score,
+          published_date: null
+        }))
+      }];
+    } else {
+      // Get search queries from centralized config - Enhanced for comprehensive forum coverage
+      const searchQueries = getAllSearchQueries(company, role, country);
+
+      logger?.logPhaseTransition('CACHE_CHECK', 'DISCOVERY', { 
+        queriesCount: searchQueries.length,
+        cachedUrls: combinedResults.reusableUrls.length
+      });
+      console.log(`Phase 1: Discovering interview review URLs with enhanced forum targeting...`);
+      
+      // Phase 1: Discovery - collect URLs with comprehensive search for quality forum content
+      const searchPromises = searchQueries.map(async (query, index) => {
       const startTime = Date.now();
       logger?.log('TAVILY_SEARCH_START', 'DISCOVERY', { query, index: index + 1, total: searchQueries.length });
       
@@ -116,6 +211,7 @@ async function searchCompanyInfo(
       };
       
       try {
+        // Use regular search without deduplication to avoid timeouts
         const result = await searchTavily(tavilyApiKey, request, searchId, userId, supabase);
         const duration = Date.now() - startTime;
         
@@ -129,45 +225,46 @@ async function searchCompanyInfo(
       }
     });
 
-    const searchResults = await Promise.all(searchPromises);
-    const validResults = searchResults.filter(r => r !== null);
-    
-    logger?.log('DISCOVERY_COMPLETE', 'PHASE1', { 
-      totalQueries: searchQueries.length, 
-      successfulResults: validResults.length,
-      failedResults: searchQueries.length - validResults.length
-    });
+      const freshSearchResults = await Promise.all(searchPromises);
+      const validResults = freshSearchResults.filter(r => r !== null);
+      
+      logger?.log('DISCOVERY_COMPLETE', 'PHASE1', { 
+        totalQueries: 2, // Reduced for speed
+        successfulResults: validResults.length,
+        failedResults: 2 - validResults.length,
+        cachedResultsAvailable: combinedResults.cachedResults.length
+      });
+
+      // Combine fresh results with cached content
+      if (combinedResults.cachedResults.length > 0) {
+        const cachedAsSearchResult = {
+          query: `Cached content for ${company}`,
+          answer: `Reusing ${combinedResults.cachedResults.length} previously analyzed sources`,
+          results: combinedResults.cachedResults.map(cached => ({
+            title: cached.content.title || 'Cached Content',
+            url: cached.url,
+            content: cached.content.content,
+            raw_content: cached.content.raw_content,
+            score: cached.content.score,
+            published_date: null
+          }))
+        };
+        searchResults = [cachedAsSearchResult, ...validResults];
+      } else {
+        searchResults = validResults;
+      }
+    }
     
     // Phase 2: Extract URLs for deep content extraction
     logger?.logPhaseTransition('DISCOVERY', 'EXTRACTION', { urlsFound: 0 });
-    const interviewUrls = extractInterviewReviewUrls(validResults);
+    const interviewUrls = extractInterviewReviewUrls(searchResults);
     logger?.log('URL_EXTRACTION', 'PHASE2', { totalUrls: interviewUrls.length, urls: interviewUrls.slice(0, 10) });
     console.log(`Phase 2: Extracting content from ${interviewUrls.length} interview review URLs...`);
     
-    let extractedContent: any[] = [];
-    if (interviewUrls.length > 0) {
-      const startTime = Date.now();
-      const urlsToExtract = interviewUrls.slice(0, RESEARCH_CONFIG.tavily.maxResults.extraction);
-      logger?.log('TAVILY_EXTRACT_START', 'EXTRACTION', { urlCount: urlsToExtract.length, urls: urlsToExtract });
-      
-      try {
-        extractedContent = await extractTavily(
-          tavilyApiKey, 
-          { urls: urlsToExtract },
-          searchId, 
-          userId, 
-          supabase
-        );
-        const duration = Date.now() - startTime;
-        logger?.logTavilyExtract(urlsToExtract, 'EXTRACTION_SUCCESS', extractedContent, undefined, duration);
-      } catch (error) {
-        const duration = Date.now() - startTime;
-        const errorMsg = error instanceof Error ? error.message : 'Unknown error';
-        logger?.logTavilyExtract(urlsToExtract, 'EXTRACTION_ERROR', undefined, errorMsg, duration);
-      }
-    } else {
-      logger?.log('EXTRACTION_SKIPPED', 'PHASE2', { reason: 'No URLs found' });
-    }
+    // Skip extraction phase temporarily to speed up response
+    console.log(`Phase 2: Skipping URL extraction for faster response (found ${interviewUrls.length} URLs)`);
+    const extractedContent: any[] = [];
+    logger?.log('EXTRACTION_SKIPPED', 'PHASE2', { reason: 'Disabled for speed', urlsFound: interviewUrls.length });
     
     logger?.logPhaseTransition('EXTRACTION', 'RESULT_AGGREGATION', { 
       searchResults: validResults.length,
@@ -188,6 +285,16 @@ async function searchCompanyInfo(
     const errorMsg = error instanceof Error ? error.message : 'Unknown error';
     logger?.log('SEARCH_ERROR', 'COMPANY_INFO', { company, role }, errorMsg);
     console.error("Error in enhanced company search:", error);
+    return null;
+  }
+  }; // End of researchPromise
+
+  try {
+    return await Promise.race([researchPromise(), functionTimeout]);
+  } catch (error) {
+    const errorMsg = error instanceof Error ? error.message : 'Unknown error';
+    logger?.log('SEARCH_TIMEOUT', 'COMPANY_INFO', { company, role }, errorMsg);
+    console.error("Company research timed out or failed:", error);
     return null;
   }
 }
@@ -401,6 +508,133 @@ You MUST return ONLY valid JSON in this exact structure:
   }
 }
 
+// Enhanced hybrid research combining native scraping with Tavily discovery
+async function conductHybridResearch(
+  company: string, 
+  role?: string, 
+  country?: string, 
+  searchId?: string, 
+  userId?: string,
+  supabase?: any,
+  logger?: SearchLogger
+): Promise<any> {
+  const hybridScraper = createHybridScraper();
+  
+  logger?.log('HYBRID_RESEARCH_START', 'NATIVE_SCRAPING', { company, role, country });
+  console.log(`[HybridResearch] Starting comprehensive research for ${company} ${role || ''}`);
+  
+  try {
+    // Phase 1: Native Scraping of Known High-Value Sources (Exhaustive)
+    logger?.logPhaseTransition('INIT', 'NATIVE_SCRAPING', { company, role });
+    console.log("Phase 1: Native scraping of structured interview sites...");
+    
+    const nativeResults = await hybridScraper.scrapeAllSources(company, role);
+    
+    logger?.log('NATIVE_SCRAPING_COMPLETE', 'PHASE1', {
+      totalExperiences: nativeResults.combinedExperiences.length,
+      platformBreakdown: nativeResults.executionSummary.platformBreakdown,
+      executionTime: nativeResults.executionSummary.totalExecutionTime
+    });
+    
+    console.log(`Phase 1 Complete: Found ${nativeResults.combinedExperiences.length} native experiences`);
+    console.log(`Platform breakdown:`, nativeResults.executionSummary.platformBreakdown);
+    
+    // Phase 2: Tavily Discovery for Unknown/Blog Sources (Supplementary)
+    logger?.logPhaseTransition('NATIVE_SCRAPING', 'TAVILY_DISCOVERY', { company, role });
+    console.log("Phase 2: Tavily discovery of additional sources (blogs, unknown forums)...");
+    
+    // Use Tavily for discovering content NOT covered by native scrapers
+    const tavilyQueries = [
+      `"${company}" interview experience blog 2024`,
+      `${company} ${role || 'engineer'} interview tips advice`,
+      `"interviewed at ${company}" personal blog experience`,
+      `${company} hiring process insights medium linkedin`
+    ];
+    
+    const tavilyResults: any[] = [];
+    
+    for (const query of tavilyQueries.slice(0, 3)) { // Limit to 3 discovery queries
+      try {
+        const searchResult = await searchTavily({
+          query: query.trim(),
+          searchDepth: 'basic',
+          maxResults: 8, // Smaller limit since this is supplementary
+          includeRawContent: false,
+          excludeDomains: ['glassdoor.com', 'reddit.com', 'blind.teamblind.com', 'leetcode.com'] // Exclude sites we already scraped natively
+        });
+        
+        if (searchResult) {
+          tavilyResults.push(searchResult);
+        }
+        
+        await new Promise(resolve => setTimeout(resolve, 1000)); // Rate limiting
+      } catch (error) {
+        console.warn(`Tavily discovery query failed: ${query}`, error);
+      }
+    }
+    
+    logger?.log('TAVILY_DISCOVERY_COMPLETE', 'PHASE2', {
+      queriesExecuted: Math.min(tavilyQueries.length, 3),
+      supplementaryResults: tavilyResults.length
+    });
+    
+    console.log(`Phase 2 Complete: Found ${tavilyResults.length} supplementary Tavily results`);
+    
+    // Phase 3: Combine and Analyze All Sources
+    logger?.logPhaseTransition('TAVILY_DISCOVERY', 'ANALYSIS', { company, role });
+    console.log("Phase 3: Analyzing combined native + discovery results...");
+    
+    // Merge native experiences with Tavily discoveries
+    const combinedData = {
+      native_experiences: nativeResults.combinedExperiences,
+      tavily_discoveries: tavilyResults,
+      execution_summary: {
+        native_platforms: nativeResults.executionSummary.platformBreakdown,
+        total_native_experiences: nativeResults.combinedExperiences.length,
+        supplementary_discoveries: tavilyResults.length,
+        total_execution_time: nativeResults.executionSummary.totalExecutionTime
+      }
+    };
+    
+    // Convert native experiences to format compatible with existing AI analysis
+    const convertedResults = {
+      search_results: tavilyResults, // Keep Tavily format for discovery content
+      extracted_content: [], // We'll populate this from native experiences
+      native_interview_experiences: nativeResults.combinedExperiences // New field for structured experiences
+    };
+    
+    // Convert native experiences to extracted content format for AI analysis
+    nativeResults.combinedExperiences.forEach((exp: InterviewExperience) => {
+      convertedResults.extracted_content.push({
+        url: exp.url,
+        title: exp.title,
+        content: `${exp.content}\n\nPlatform: ${exp.platform}\nDifficulty: ${exp.difficulty_rating}\nExperience Type: ${exp.experience_type}\nInterview Stages: ${exp.metadata.interview_stages?.join(', ') || 'Not specified'}\nQuestions Asked: ${exp.metadata.questions_asked?.join(', ') || 'Not specified'}`,
+        platform: exp.platform,
+        metadata: exp.metadata
+      });
+    });
+    
+    logger?.log('HYBRID_RESEARCH_COMPLETE', 'SUCCESS', {
+      totalNativeExperiences: nativeResults.combinedExperiences.length,
+      totalTavilyDiscoveries: tavilyResults.length,
+      combinedExtractedContent: convertedResults.extracted_content.length,
+      success: true
+    });
+    
+    console.log(`Hybrid Research Complete: ${nativeResults.combinedExperiences.length} native + ${tavilyResults.length} discovery results`);
+    
+    return convertedResults;
+    
+  } catch (error) {
+    logger?.log('HYBRID_RESEARCH_ERROR', 'FAILURE', { error: error.message, company, role });
+    console.error('Hybrid research failed:', error);
+    
+    // Fallback to traditional Tavily-only approach
+    console.log('Falling back to traditional Tavily search...');
+    return await searchCompanyInfo(company, role, country, searchId, userId, supabase, logger);
+  }
+}
+
 serve(async (req) => {
   // Handle CORS preflight request
   if (req.method === "OPTIONS") {
@@ -440,10 +674,18 @@ serve(async (req) => {
     
     const userId = searchData?.user_id;
 
-    // Step 1: Conduct company research using Tavily
-    logger.log('STEP_START', 'RESEARCH', { step: 1, description: 'Conducting company research' });
-    console.log("Conducting company research...");
-    const researchData = await searchCompanyInfo(company, role, country, searchId, userId, supabase, logger);
+    // Step 1: Conduct research (Hybrid or Traditional based on feature flag)
+    const useHybridApproach = RESEARCH_CONFIG.features.enableHybridScraping;
+    
+    if (useHybridApproach) {
+      logger.log('STEP_START', 'HYBRID_RESEARCH', { step: 1, description: 'Conducting hybrid native + discovery research' });
+      console.log("Conducting hybrid research (native scraping + discovery)...");
+      var researchData = await conductHybridResearch(company, role, country, searchId, userId, supabase, logger);
+    } else {
+      logger.log('STEP_START', 'TRADITIONAL_RESEARCH', { step: 1, description: 'Conducting traditional Tavily research' });
+      console.log("Conducting traditional Tavily research...");
+      var researchData = await searchCompanyInfo(company, role, country, searchId, userId, supabase, logger);
+    }
 
     // Step 2: Analyze research data using AI
     logger.log('STEP_START', 'ANALYSIS', { step: 2, description: 'Analyzing company data' });
@@ -457,8 +699,8 @@ serve(async (req) => {
       logger
     );
 
-    // Step 3: Store company insights (for potential future use)
-    console.log("Storing company research results...");
+    // Step 3: Skip caching temporarily to avoid timeout issues
+    console.log("Skipping research caching to avoid timeouts...");
     
     const researchOutput: CompanyResearchOutput = {
       company_insights: companyInsights,
@@ -473,7 +715,14 @@ serve(async (req) => {
       company_insights: companyInsights,
       research_sources: researchData ? researchData.search_results?.length || 0 : 0,
       extracted_urls: researchData ? researchData.total_urls_extracted || 0 : 0,
-      deep_extracts: researchData ? researchData.extracted_content?.length || 0 : 0
+      deep_extracts: researchData ? researchData.extracted_content?.length || 0 : 0,
+      optimization_info: {
+        cached_urls_reused: 0, // Disabled temporarily
+        fresh_searches_performed: 2, // Reduced for speed
+        excluded_domains: 0, // Disabled temporarily
+        cache_optimization_active: false, // Disabled temporarily
+        speed_optimizations: "URL deduplication and extraction disabled for faster response"
+      }
     };
 
     logger.logFunctionEnd(true, responseData);

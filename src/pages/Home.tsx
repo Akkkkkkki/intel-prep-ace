@@ -104,8 +104,8 @@ const Home = () => {
   };
 
   const startStatusPolling = (searchId: string) => {
-    // Start with more frequent polling for better responsiveness
     let pollCount = 0;
+    let hasShownTimeoutWarning = false;
     
     const poll = async () => {
       try {
@@ -116,13 +116,33 @@ const Home = () => {
           
           // Stop polling when complete or failed
           if (newStatus === 'completed' || newStatus === 'failed') {
+            if (newStatus === 'failed') {
+              toast({
+                title: "Research Failed",
+                description: "The research process encountered an error. Please try again.",
+                variant: "destructive",
+                duration: 5000,
+              });
+            }
             return false; // Stop polling
           }
         }
+        
+        // Show timeout warning after 2.5 minutes of processing
+        if (pollCount > 75 && !hasShownTimeoutWarning) {
+          hasShownTimeoutWarning = true;
+          toast({
+            title: "Research Taking Longer",
+            description: "The research is taking longer than expected. You can close this dialog and check back later.",
+            duration: 8000,
+          });
+        }
+        
         pollCount++;
         return true; // Continue polling
       } catch (error) {
         console.error('Error polling search status:', error);
+        pollCount++;
         return true; // Continue polling despite errors
       }
     };
@@ -139,8 +159,8 @@ const Home = () => {
           return;
         }
 
-        // After 20 polls (1 minute), switch to less frequent polling
-        if (pollCount > 20) {
+        // After 40 polls (2 minutes), switch to less frequent polling
+        if (pollCount > 40) {
           clearInterval(pollInterval);
           
           // Switch to 5-second intervals for long-running searches
@@ -151,12 +171,22 @@ const Home = () => {
             }
           }, 5000);
 
-          // Clear slow polling after 10 minutes total
+          // Clear slow polling after 8 minutes total
           setTimeout(() => {
             clearInterval(slowPollInterval);
-          }, 540000); // 9 more minutes (10 total)
+            // If still processing after 8 minutes, assume timeout
+            if (searchStatus === 'processing' || searchStatus === 'pending') {
+              setSearchStatus('failed');
+              toast({
+                title: "Research Timeout",
+                description: "The research process has timed out. Please try again with a smaller scope.",
+                variant: "destructive",
+                duration: 10000,
+              });
+            }
+          }, 360000); // 6 more minutes (8 total)
         }
-      }, 2000); // Poll every 2 seconds initially
+      }, 3000); // Poll every 3 seconds initially
 
       // Clear fast polling after 2 minutes
       setTimeout(() => {
