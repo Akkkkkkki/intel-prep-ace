@@ -99,11 +99,11 @@ erDiagram
     searches ||--o{ resumes : includes
     searches ||--o{ practice_sessions : generates
     searches ||--o{ cv_job_comparisons : has
-    searches ||--o{ enhanced_question_banks : contains
     searches ||--o{ native_interview_experiences : stores
     searches ||--o{ api_call_logs : tracks
     searches ||--o{ scraping_metrics : monitors
     interview_stages ||--o{ interview_questions : has
+    searches ||--o{ interview_questions : contains
     practice_sessions ||--o{ practice_answers : records
     interview_questions ||--o{ practice_answers : answers
     
@@ -125,7 +125,6 @@ erDiagram
         text role_links
         text search_status
         jsonb cv_job_comparison
-        jsonb enhanced_question_bank
         text[] preparation_priorities
         float overall_fit_score
         timestamp created_at
@@ -146,8 +145,21 @@ erDiagram
     interview_questions {
         uuid id PK
         uuid stage_id FK
+        uuid search_id FK
         text question
+        text category
+        text question_type
+        text difficulty
+        text rationale
+        text suggested_answer_approach
+        text[] evaluation_criteria
+        text[] follow_up_questions
+        boolean star_story_fit
+        text company_context
+        integer usage_count
+        float confidence_score
         timestamp created_at
+        timestamp updated_at
     }
     
     resumes {
@@ -173,23 +185,7 @@ erDiagram
         timestamp updated_at
     }
     
-    enhanced_question_banks {
-        uuid id PK
-        uuid search_id FK
-        uuid user_id FK
-        text interview_stage
-        jsonb behavioral_questions
-        jsonb technical_questions
-        jsonb situational_questions
-        jsonb company_specific_questions
-        jsonb role_specific_questions
-        jsonb experience_based_questions
-        jsonb cultural_fit_questions
-        integer total_questions
-        jsonb generation_context
-        timestamp created_at
-        timestamp updated_at
-    }
+
     
     interview_experiences {
         uuid id PK
@@ -312,9 +308,11 @@ erDiagram
 - **Purpose:** Store detailed CV-job fit analysis results
 - **Data:** Skill gaps, experience analysis, preparation strategies
 
-##### enhanced_question_banks
-- **Purpose:** Store categorized interview questions by stage
-- **Categories:** Behavioral, technical, situational, company-specific, etc.
+##### interview_questions (Enhanced)
+- **Purpose:** Store comprehensive interview questions with rich metadata
+- **Categories:** Behavioral, technical, situational, company-specific, role-specific, experience-based, cultural-fit
+- **Metadata:** Difficulty, rationale, answer guidance, evaluation criteria, follow-up questions
+- **Features:** Company context, STAR method compatibility, confidence scoring
 
 ##### interview_experiences
 - **Purpose:** Store research data from interview experiences

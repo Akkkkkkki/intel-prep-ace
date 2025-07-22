@@ -114,9 +114,8 @@ npx supabase functions deploy FUNCTION_NAME  # Deploy specific function
 ### Core Tables  
 - **`searches`**: User search sessions and status tracking
 - **`interview_stages`**: AI-generated interview stage structures  
-- **`interview_questions`**: Questions organized by interview stage
+- **`interview_questions`**: **Enhanced** questions with comprehensive metadata and guidance
 - **`cv_job_comparisons`**: Resume-job matching analysis
-- **`enhanced_question_banks`**: Generated questions by interview stage
 - **`scraped_urls`**: Consolidated URL storage with embedded content (optimized)
 - **`tavily_searches`**: Simplified API call logging
 - **`resumes`**: User resume/CV storage
@@ -125,9 +124,10 @@ npx supabase functions deploy FUNCTION_NAME  # Deploy specific function
 - **`practice_answers`**: User practice responses
 
 ### Key Features
-- **Consolidated Content Storage**: `scraped_urls` now contains both URL metadata AND full content
-- **Simplified Architecture**: Removed redundant tables (60% reduction)
-- **Quality Scoring**: Automated content assessment (0-1 scale)
+- **Enhanced Question System**: All questions include comprehensive metadata, guidance, and company context
+- **Consolidated Architecture**: Single source of truth for interview questions (enhanced_question_banks removed)
+- **Premium Experience for All**: Every user gets high-quality questions with detailed preparation guidance
+- **Quality Scoring**: Automated content assessment (0-1 scale) and question confidence scoring
 - **Cost Optimization**: Intelligent URL deduplication reduces API costs by 40%
 - **Performance**: Optimized indexes and simplified RLS policies
 - **Row Level Security (RLS)** on all essential tables

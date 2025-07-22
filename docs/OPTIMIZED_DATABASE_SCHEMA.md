@@ -30,15 +30,52 @@ supabase/migrations/00000000000000_initial_schema.sql
 
 #### **Interview Process**
 - **`interview_stages`** - Interview process structure
-- **`interview_questions`** - Generated questions for each stage
+- **`interview_questions`** - **Enhanced** questions with comprehensive metadata and guidance
 - **`practice_sessions`** - User practice sessions
 - **`practice_answers`** - User responses to practice questions
 
 #### **Research & AI Data**
 - **`scraped_urls`** - **Consolidated** web scraping data with content (merged from previous scraped_content)
-- **`enhanced_question_banks`** - AI-generated question repository
 - **`cv_job_comparisons`** - CV-job matching analysis results
 - **`tavily_searches`** - API call logging for Tavily service
+
+### **Enhanced `interview_questions` Table**
+```sql
+CREATE TABLE public.interview_questions (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  stage_id UUID REFERENCES public.interview_stages(id) ON DELETE CASCADE NOT NULL,
+  search_id UUID REFERENCES public.searches(id) ON DELETE CASCADE NOT NULL,
+  
+  -- Question content and metadata
+  question TEXT NOT NULL,
+  category TEXT NOT NULL CHECK (category IN ('general', 'behavioral', 'technical', 'situational', 'company_specific', 'role_specific', 'experience_based', 'cultural_fit')),
+  question_type TEXT NOT NULL,
+  difficulty TEXT NOT NULL CHECK (difficulty IN ('Easy', 'Medium', 'Hard')),
+  
+  -- Enhanced guidance and context
+  rationale TEXT,
+  suggested_answer_approach TEXT,
+  evaluation_criteria TEXT[],
+  follow_up_questions TEXT[],
+  star_story_fit BOOLEAN DEFAULT false,
+  company_context TEXT,
+  
+  -- Usage and quality metrics
+  usage_count INTEGER DEFAULT 0,
+  confidence_score FLOAT DEFAULT 0.0,
+  
+  created_at TIMESTAMP WITH TIME ZONE DEFAULT now() NOT NULL,
+  updated_at TIMESTAMP WITH TIME ZONE DEFAULT now() NOT NULL
+);
+```
+
+#### **Key Features**
+- **Comprehensive Metadata**: Every question includes rationale, answer guidance, and evaluation criteria
+- **Categorization**: Seven distinct question types for targeted practice
+- **Difficulty Levels**: Easy, Medium, Hard classification for progressive learning
+- **STAR Method Integration**: Identifies questions suitable for STAR methodology
+- **Company Context**: Provides company-specific insights for each question
+- **Quality Scoring**: Confidence metrics for question relevance and accuracy
 
 ## Optimized Table Schema
 

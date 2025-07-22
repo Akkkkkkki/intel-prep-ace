@@ -79,21 +79,7 @@ interface InterviewStage {
   selected: boolean;
 }
 
-interface EnhancedQuestionBank {
-  id: string;
-  search_id: string;
-  user_id: string;
-  interview_stage: string;
-  behavioral_questions: EnhancedQuestion[];
-  technical_questions: EnhancedQuestion[];
-  situational_questions: EnhancedQuestion[];
-  company_specific_questions: EnhancedQuestion[];
-  role_specific_questions: EnhancedQuestion[];
-  experience_based_questions: EnhancedQuestion[];
-  cultural_fit_questions: EnhancedQuestion[];
-  total_questions: number;
-  generation_context: any;
-}
+// Note: EnhancedQuestionBank interface removed - functionality consolidated into interview_questions
 
 interface PracticeSession {
   id: string;
@@ -112,7 +98,6 @@ const Practice = () => {
   
   const [questions, setQuestions] = useState<Question[]>([]);
   const [allStages, setAllStages] = useState<InterviewStage[]>([]);
-  const [enhancedQuestionBanks, setEnhancedQuestionBanks] = useState<EnhancedQuestionBank[]>([]);
   const [searchData, setSearchData] = useState<{ search_status: string; company?: string; role?: string } | null>(null);
   const [currentIndex, setCurrentIndex] = useState(0);
   const [answers, setAnswers] = useState<Map<string, string>>(new Map());
@@ -193,10 +178,7 @@ const Practice = () => {
             
             setAllStages(transformedStages);
             
-            // Load enhanced question banks
-            if (result.enhancedQuestions && result.enhancedQuestions.length > 0) {
-              setEnhancedQuestionBanks(result.enhancedQuestions as unknown as EnhancedQuestionBank[]);
-            }
+            // Note: Enhanced questions now integrated into regular questions
             
             // Update URL if no stages were specified (select all by default)
             if (urlStageIds.length === 0) {
@@ -235,54 +217,8 @@ const Practice = () => {
       try {
         const allQuestions: Question[] = [];
         
-        // First, try to load from enhanced question banks if available
-        if (enhancedQuestionBanks.length > 0) {
-          selectedStages.forEach(stage => {
-            const enhancedBank = enhancedQuestionBanks.find(bank => 
-              bank.interview_stage === stage.name
-            );
-            
-            if (enhancedBank) {
-              // Process all question categories
-              const questionCategories = [
-                { key: 'behavioral_questions', category: 'behavioral' },
-                { key: 'technical_questions', category: 'technical' },
-                { key: 'situational_questions', category: 'situational' },
-                { key: 'company_specific_questions', category: 'company_specific' },
-                { key: 'role_specific_questions', category: 'role_specific' },
-                { key: 'experience_based_questions', category: 'experience_based' },
-                { key: 'cultural_fit_questions', category: 'cultural_fit' }
-              ];
-              
-              questionCategories.forEach(({ key, category }) => {
-                const questions = enhancedBank[key as keyof EnhancedQuestionBank] as EnhancedQuestion[];
-                if (Array.isArray(questions)) {
-                  questions.forEach((enhancedQ, index) => {
-                    allQuestions.push({
-                      id: `${enhancedBank.id}-${category}-${index}`,
-                      stage_id: stage.id,
-                      stage_name: stage.name,
-                      question: enhancedQ.question,
-                      answered: false,
-                      type: enhancedQ.type,
-                      difficulty: enhancedQ.difficulty,
-                      rationale: enhancedQ.rationale,
-                      suggested_answer_approach: enhancedQ.suggested_answer_approach,
-                      evaluation_criteria: enhancedQ.evaluation_criteria,
-                      follow_up_questions: enhancedQ.follow_up_questions,
-                      star_story_fit: enhancedQ.star_story_fit,
-                      company_context: enhancedQ.company_context,
-                      category
-                    });
-                  });
-                }
-              });
-            }
-          });
-        }
-        
-        // Fallback to basic questions if no enhanced questions available
-        if (allQuestions.length === 0) {
+        // Load questions from stages (now all enhanced)
+        {
           selectedStages.forEach(stage => {
             stage.questions?.forEach(questionObj => {
               allQuestions.push({
@@ -290,7 +226,16 @@ const Practice = () => {
                 stage_id: stage.id,
                 stage_name: stage.name,
                 question: questionObj.question,
-                answered: false
+                answered: false,
+                type: questionObj.type,
+                difficulty: questionObj.difficulty,
+                rationale: questionObj.rationale,
+                suggested_answer_approach: questionObj.suggested_answer_approach,
+                evaluation_criteria: questionObj.evaluation_criteria,
+                follow_up_questions: questionObj.follow_up_questions,
+                star_story_fit: questionObj.star_story_fit,
+                company_context: questionObj.company_context,
+                category: questionObj.category
               });
             });
           });
@@ -346,7 +291,7 @@ const Practice = () => {
     if (allStages.length > 0) {
       loadPracticeSession();
     }
-  }, [allStages, enhancedQuestionBanks, selectedCategories, selectedDifficulty, shuffleQuestions, searchId]);
+  }, [allStages, selectedCategories, selectedDifficulty, shuffleQuestions, searchId]);
 
   // Reset timer when question changes
   useEffect(() => {
@@ -840,15 +785,12 @@ const Practice = () => {
                 Practice Configuration
               </CardTitle>
               <CardDescription>
-                {enhancedQuestionBanks.length > 0 
-                  ? `Enhanced question bank with ${enhancedQuestionBanks.reduce((total, bank) => total + (bank.total_questions || 0), 0)} total questions available`
-                  : "Basic question set available"
-                }
+                Enhanced question bank with comprehensive metadata and guidance
               </CardDescription>
             </CardHeader>
             <CardContent className="space-y-6">
               {/* Question Filtering */}
-              {enhancedQuestionBanks.length > 0 && (
+              {(
                 <div className="space-y-4">
                   <h4 className="text-sm font-medium">Question Filters</h4>
                   <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
@@ -927,11 +869,9 @@ const Practice = () => {
                           </div>
                           <div className="text-xs text-muted-foreground">
                             {totalQuestions} question{totalQuestions !== 1 ? 's' : ''} available
-                            {enhancedBank && (
-                              <Badge variant="secondary" className="ml-2 text-xs">
-                                Enhanced
-                              </Badge>
-                            )}
+                            <Badge variant="secondary" className="ml-2 text-xs">
+                              Enhanced
+                            </Badge>
                           </div>
                         </div>
                       </div>

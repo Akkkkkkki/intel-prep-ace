@@ -692,10 +692,21 @@ serve(async (req) => {
       
       if (stageError) throw stageError;
       
-      // Insert questions for this stage
-      const questionsToInsert = stage.common_questions.map(question => ({
+      // Insert enhanced questions for this stage
+      const questionsToInsert = stage.common_questions.map((question, index) => ({
         stage_id: stageData.id,
-        question
+        search_id: searchId,
+        question,
+        category: 'general', // Basic questions are categorized as general
+        question_type: 'common',
+        difficulty: 'Medium',
+        rationale: `Common question for ${stage.name} stage based on interview research`,
+        suggested_answer_approach: 'Use STAR method if describing experience, otherwise provide clear, structured response',
+        evaluation_criteria: ['Clarity of communication', 'Relevance to role', 'Confidence'],
+        follow_up_questions: [],
+        star_story_fit: question.toLowerCase().includes('tell me about') || question.toLowerCase().includes('describe'),
+        company_context: `This is a standard question for ${stage.name} at ${company}`,
+        confidence_score: 0.7 // Standard questions have good confidence
       }));
       
       const { error: questionsError } = await supabase
@@ -775,31 +786,82 @@ serve(async (req) => {
       }
     }
 
-    // Store enhanced question banks for each stage
+    // Store enhanced questions in the consolidated interview_questions table
     if (enhancedQuestions && enhancedQuestions.length > 0) {
       for (const stageQuestions of enhancedQuestions) {
         try {
-          await supabase
-            .from("enhanced_question_banks")
-            .upsert({
-              search_id: searchId,
-              user_id: userId,
-              interview_stage: stageQuestions.stage,
-              behavioral_questions: stageQuestions.questions.behavioral_questions || [],
-              technical_questions: stageQuestions.questions.technical_questions || [],
-              situational_questions: stageQuestions.questions.situational_questions || [],
-              company_specific_questions: stageQuestions.questions.company_specific_questions || [],
-              role_specific_questions: stageQuestions.questions.role_specific_questions || [],
-              experience_based_questions: stageQuestions.questions.experience_based_questions || [],
-              cultural_fit_questions: stageQuestions.questions.cultural_fit_questions || [],
-              generation_context: {
-                company_insights: !!companyInsights,
-                job_requirements: !!jobRequirements,
-                cv_analysis: !!cvAnalysis
-              }
-            }, {
-              onConflict: 'search_id,interview_stage'
+          // Get the stage_id for this stage name
+          const { data: stage, error: stageError } = await supabase
+            .from("interview_stages")
+            .select("id")
+            .eq("search_id", searchId)
+            .eq("name", stageQuestions.stage)
+            .single();
+
+          if (stageError || !stage) {
+            console.warn(`Stage not found for ${stageQuestions.stage}, skipping enhanced questions`);
+            continue;
+          }
+
+          // Prepare all questions for batch insert
+          const questionsToInsert = [];
+          
+          // Helper function to add questions from a category
+          const addQuestionsFromCategory = (questions: any[], category: string) => {
+            questions.forEach((q: any) => {
+              questionsToInsert.push({
+                stage_id: stage.id,
+                search_id: searchId,
+                question: q.question,
+                category: category,
+                question_type: q.type || category,
+                difficulty: q.difficulty || 'Medium',
+                rationale: q.rationale,
+                suggested_answer_approach: q.suggested_answer_approach,
+                evaluation_criteria: q.evaluation_criteria || [],
+                follow_up_questions: q.follow_up_questions || [],
+                star_story_fit: q.star_story_fit || false,
+                company_context: q.company_context,
+                confidence_score: 0.8 // Default confidence for AI-generated questions
+              });
             });
+          };
+
+          // Add questions from all categories
+          if (stageQuestions.questions.behavioral_questions) {
+            addQuestionsFromCategory(stageQuestions.questions.behavioral_questions, 'behavioral');
+          }
+          if (stageQuestions.questions.technical_questions) {
+            addQuestionsFromCategory(stageQuestions.questions.technical_questions, 'technical');
+          }
+          if (stageQuestions.questions.situational_questions) {
+            addQuestionsFromCategory(stageQuestions.questions.situational_questions, 'situational');
+          }
+          if (stageQuestions.questions.company_specific_questions) {
+            addQuestionsFromCategory(stageQuestions.questions.company_specific_questions, 'company_specific');
+          }
+          if (stageQuestions.questions.role_specific_questions) {
+            addQuestionsFromCategory(stageQuestions.questions.role_specific_questions, 'role_specific');
+          }
+          if (stageQuestions.questions.experience_based_questions) {
+            addQuestionsFromCategory(stageQuestions.questions.experience_based_questions, 'experience_based');
+          }
+          if (stageQuestions.questions.cultural_fit_questions) {
+            addQuestionsFromCategory(stageQuestions.questions.cultural_fit_questions, 'cultural_fit');
+          }
+
+          // Batch insert all questions
+          if (questionsToInsert.length > 0) {
+            const { error: insertError } = await supabase
+              .from("interview_questions")
+              .insert(questionsToInsert);
+
+            if (insertError) {
+              console.warn(`Failed to save enhanced questions for stage ${stageQuestions.stage}:`, insertError);
+            } else {
+              console.log(`Saved ${questionsToInsert.length} enhanced questions for stage ${stageQuestions.stage}`);
+            }
+          }
         } catch (dbError) {
           console.warn(`Failed to save enhanced questions for stage ${stageQuestions.stage}:`, dbError);
         }
@@ -813,7 +875,6 @@ serve(async (req) => {
         .update({ 
           search_status: "completed",
           cv_job_comparison: cvJobComparison,
-          enhanced_question_bank: enhancedQuestions,
           preparation_priorities: cvJobComparison?.preparation_priorities || [],
           overall_fit_score: cvJobComparison?.overall_fit_score || 0
         })

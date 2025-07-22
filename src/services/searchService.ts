@@ -157,9 +157,16 @@ export const searchService = {
 
           if (questionsError) throw questionsError;
 
+          // Transform questions to include enhanced metadata
+          const enhancedQuestions = (questions || []).map(q => ({
+            ...q,
+            type: q.question_type,
+            answered: false, // For practice session tracking
+          }));
+
           return {
             ...stage,
-            questions: questions || [],
+            questions: enhancedQuestions,
           };
         })
       );
@@ -175,21 +182,10 @@ export const searchService = {
         console.warn("CV-Job comparison not found:", cvJobError);
       }
 
-      // Get enhanced question banks
-      const { data: enhancedQuestions, error: enhancedError } = await supabase
-        .from("enhanced_question_banks")
-        .select("*")
-        .eq("search_id", searchId);
-
-      if (enhancedError) {
-        console.warn("Enhanced questions not found:", enhancedError);
-      }
-
       return { 
         search, 
         stages: stagesWithQuestions, 
         cvJobComparison: cvJobComparison || null,
-        enhancedQuestions: enhancedQuestions || [],
         success: true 
       };
     } catch (error) {
