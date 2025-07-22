@@ -111,7 +111,12 @@ async function searchCompanyInfo(
     console.log("Phase 0: Checking for cached research and existing content...");
     
     // URL Deduplication: Find reusable content to reduce API costs
-    let combinedResults = {
+    let combinedResults: {
+      reusableUrls: string[];
+      cachedResults: any[];
+      shouldSkipFreshSearch: boolean;
+      excluded_domains: string[];
+    } = {
       reusableUrls: [],
       cachedResults: [],
       shouldSkipFreshSearch: false,
@@ -125,7 +130,7 @@ async function searchCompanyInfo(
         console.log(`Found ${deduplicationResult.reusable_urls.length} reusable URLs for ${company}`);
         
         // Get cached content for reusable URLs
-        const cachedContent = await urlDeduplication.getCachedContent(deduplicationResult.reusable_urls);
+        const cachedContent = await urlDeduplication.getExistingContent(deduplicationResult.reusable_urls, company, role, country);
         
         combinedResults = {
           reusableUrls: deduplicationResult.reusable_urls,
@@ -164,6 +169,7 @@ async function searchCompanyInfo(
     });
 
     let searchResults: any[] = [];
+    let validResults: any[] = [];
     
     // If we have sufficient cached content, use it and skip fresh searches
     if (combinedResults.shouldSkipFreshSearch) {
@@ -212,8 +218,8 @@ async function searchCompanyInfo(
       };
       
       try {
-        // Use search with fallback (Aston AI multi-engine pattern)
-        const result = await searchWithFallback(tavilyApiKey, query.trim(), request.maxResults);
+        // Use search with fallback
+        const result = await searchWithFallback(tavilyApiKey, query.trim(), request.maxResults, searchId, userId, supabase);
         const duration = Date.now() - startTime;
         
         logger?.logTavilySearch(query, 'DISCOVERY_SUCCESS', request, result, undefined, duration);
@@ -519,6 +525,11 @@ async function conductHybridResearch(
   supabase?: any,
   logger?: SearchLogger
 ): Promise<any> {
+  const tavilyApiKey = Deno.env.get("TAVILY_API_KEY");
+  if (!tavilyApiKey) {
+    console.warn("TAVILY_API_KEY not found, skipping Tavily discovery phase");
+  }
+  
   const hybridScraper = createHybridScraper();
   
   logger?.log('HYBRID_RESEARCH_START', 'NATIVE_SCRAPING', { company, role, country });
@@ -556,13 +567,13 @@ async function conductHybridResearch(
     
     for (const query of tavilyQueries.slice(0, 3)) { // Limit to 3 discovery queries
       try {
-        const searchResult = await searchTavily({
+        const searchResult = await searchTavily(tavilyApiKey, {
           query: query.trim(),
           searchDepth: 'basic',
           maxResults: 8, // Smaller limit since this is supplementary
           includeRawContent: false,
           excludeDomains: ['glassdoor.com', 'reddit.com', 'blind.teamblind.com', 'leetcode.com'] // Exclude sites we already scraped natively
-        });
+        }, searchId, userId, supabase);
         
         if (searchResult) {
           tavilyResults.push(searchResult);
@@ -598,7 +609,11 @@ async function conductHybridResearch(
     };
     
     // Convert native experiences to format compatible with existing AI analysis
-    const convertedResults = {
+    const convertedResults: {
+      search_results: any[];
+      extracted_content: any[];
+      native_interview_experiences: any[];
+    } = {
       search_results: tavilyResults, // Keep Tavily format for discovery content
       extracted_content: [], // We'll populate this from native experiences
       native_interview_experiences: nativeResults.combinedExperiences // New field for structured experiences

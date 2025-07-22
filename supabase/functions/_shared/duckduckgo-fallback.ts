@@ -62,11 +62,14 @@ export async function searchDuckDuckGo(
   }
 }
 
-// Enhanced search with fallback pattern (Aston AI inspired)
+// Enhanced search with fallback pattern
 export async function searchWithFallback(
   tavilyApiKey: string,
   query: string,
-  maxResults: number = 10
+  maxResults: number = 10,
+  searchId?: string,
+  userId?: string,
+  supabase?: any
 ): Promise<any> {
   try {
     // Try Tavily first (your primary engine)
@@ -77,7 +80,7 @@ export async function searchWithFallback(
       maxResults,
       includeAnswer: true,
       includeRawContent: false
-    });
+    }, searchId, userId, supabase);
     
     if (tavilyResult && tavilyResult.results && tavilyResult.results.length > 0) {
       return tavilyResult;
