@@ -87,9 +87,9 @@ async function gatherCompanyData(company: string, role?: string, country?: strin
   try {
     console.log("Calling company-research function...");
     
-    // Set a timeout for the company research call (60 seconds)
+    // Set a timeout for the company research call (25 seconds)
     const controller = new AbortController();
-    const timeoutId = setTimeout(() => controller.abort(), 60000);
+    const timeoutId = setTimeout(() => controller.abort(), 25000);
     
     const response = await fetch(`${Deno.env.get("SUPABASE_URL")}/functions/v1/company-research`, {
       method: 'POST',
@@ -117,7 +117,7 @@ async function gatherCompanyData(company: string, role?: string, country?: strin
     return null;
   } catch (error) {
     if (error.name === 'AbortError') {
-      console.warn("Company research timed out after 60 seconds, continuing without data");
+      console.warn("Company research timed out after 25 seconds, continuing without data");
     } else {
       console.error("Error calling company-research:", error);
     }
@@ -614,16 +614,23 @@ serve(async (req) => {
     logger.log('STEP_START', 'DATA_GATHERING', { step: 1, description: 'Starting company research' });
     console.log("Starting company research...");
     
+    // Update search progress (Aston AI inspired real-time updates)
+    await supabase
+      .from("searches")
+      .update({ 
+        search_status: "processing",
+        progress_message: "Researching company insights and interview processes..." 
+      })
+      .eq("id", searchId);
+    
     const companyDataPromise = gatherCompanyData(company, role, country, searchId);
     
-    // Step 2: Run faster operations in parallel
-    const [jobRequirements, cvAnalysis] = await Promise.all([
+    // Step 2: Run ALL operations concurrently (Aston AI pattern)
+    const [companyInsights, jobRequirements, cvAnalysis] = await Promise.all([
+      companyDataPromise,
       gatherJobData(roleLinks || [], searchId, company, role), 
       gatherCVData(cv || "", userId)
     ]);
-    
-    // Step 3: Wait for company research to complete or timeout
-    const companyInsights = await companyDataPromise;
     
     logger.log('DATA_GATHERING_COMPLETE', 'MICROSERVICES', { 
       companyInsightsFound: !!companyInsights,

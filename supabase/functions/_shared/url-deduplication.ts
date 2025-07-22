@@ -1,5 +1,6 @@
-// URL Deduplication and Content Management System
+// URL Deduplication and Content Management System (OPTIMIZED)
 // Handles intelligent URL reuse and content caching for research optimization
+// Updated to work with consolidated scraped_urls table
 
 export interface ScrapedUrl {
   id?: string;
@@ -17,41 +18,23 @@ export interface ScrapedUrl {
   times_reused: number;
   first_scraped_at: string;
   last_reused_at?: string;
-}
-
-export interface ScrapedContent {
-  id?: string;
-  scraped_url_id: string;
-  full_content: string;
+  
+  // New consolidated content fields
+  full_content?: string;
   raw_html?: string;
   structured_data?: any;
   extracted_questions?: string[];
   extracted_insights?: string[];
-  word_count: number;
-  language: string;
-  content_source: string;
-  processing_status: 'raw' | 'processed' | 'analyzed' | 'failed';
+  word_count?: number;
+  language?: string;
+  content_source?: string;
+  processing_status?: 'raw' | 'processed' | 'analyzed' | 'failed';
   ai_summary?: string;
-}
-
-export interface ResearchCache {
-  id?: string;
-  cache_key: string;
-  company_name: string;
-  role_title?: string;
-  country?: string;
-  company_insights: any;
-  raw_search_data?: any;
-  source_urls: string[];
-  cache_freshness_hours: number;
-  confidence_score: number;
-  cache_hits: number;
 }
 
 export interface UrlDeduplicationResult {
   reusable_urls: string[];
   excluded_domains: string[];
-  cached_research?: ResearchCache;
   total_cached_urls: number;
 }
 
@@ -59,7 +42,7 @@ export interface UrlDeduplicationResult {
 export class UrlDeduplicationService {
   constructor(private supabase: any) {}
 
-  // Store a scraped URL with metadata
+  // Store a scraped URL with content (consolidated)
   async storeScrapedUrl(
     url: string,
     company: string,
@@ -71,7 +54,12 @@ export class UrlDeduplicationService {
       content_type: ScrapedUrl['content_type'];
       quality_score: number;
       extraction_method: ScrapedUrl['extraction_method'];
-      tavily_search_id?: string;
+      full_content?: string;
+      ai_summary?: string;
+      structured_data?: any;
+      extracted_questions?: string[];
+      extracted_insights?: string[];
+      content_source?: string;
     }
   ): Promise<string | null> {
     try {
@@ -87,8 +75,16 @@ export class UrlDeduplicationService {
           content_type: metadata.content_type,
           content_quality_score: metadata.quality_score,
           extraction_method: metadata.extraction_method,
-          tavily_search_id: metadata.tavily_search_id,
-          times_reused: 0
+          times_reused: 0,
+          // Consolidated content fields
+          full_content: metadata.full_content,
+          ai_summary: metadata.ai_summary,
+          structured_data: metadata.structured_data || {},
+          extracted_questions: metadata.extracted_questions || [],
+          extracted_insights: metadata.extracted_insights || [],
+          content_source: metadata.content_source || 'tavily_search',
+          processing_status: 'raw',
+          language: 'en'
         })
         .select('id')
         .single();
@@ -109,9 +105,9 @@ export class UrlDeduplicationService {
     }
   }
 
-  // Store content extracted from a URL
-  async storeScrapedContent(
-    scrapedUrlId: string,
+  // Update existing URL with content
+  async updateScrapedUrlContent(
+    urlId: string,
     content: {
       full_content: string;
       raw_html?: string;
@@ -121,35 +117,31 @@ export class UrlDeduplicationService {
       content_source: string;
       ai_summary?: string;
     }
-  ): Promise<string | null> {
+  ): Promise<boolean> {
     try {
-      const { data, error } = await this.supabase
-        .from('scraped_content')
-        .insert({
-          scraped_url_id: scrapedUrlId,
+      const { error } = await this.supabase
+        .from('scraped_urls')
+        .update({
           full_content: content.full_content,
           raw_html: content.raw_html,
           structured_data: content.structured_data,
           extracted_questions: content.extracted_questions,
           extracted_insights: content.extracted_insights,
-          word_count: content.full_content.length,
-          language: 'en', // Could be detected
           content_source: content.content_source,
-          processing_status: 'raw',
-          ai_summary: content.ai_summary
+          ai_summary: content.ai_summary,
+          processing_status: 'processed',
+          word_count: content.full_content.split(/\s+/).length
         })
-        .select('id')
-        .single();
+        .eq('id', urlId);
 
-      if (error) throw error;
-      return data.id;
+      return !error;
     } catch (error) {
-      console.error('Error storing scraped content:', error);
-      return null;
+      console.error('Error updating scraped URL content:', error);
+      return false;
     }
   }
 
-  // Find reusable URLs for a given company/role/country combination
+  // Find reusable URLs using simplified function
   async findReusableUrls(
     company: string,
     role?: string,
@@ -164,15 +156,14 @@ export class UrlDeduplicationService {
     const startTime = Date.now();
 
     try {
-      // Use the new optimized function with strict timeout
+      // Use the new simplified function
       const timeoutPromise = new Promise<never>((_, reject) => 
         setTimeout(() => reject(new Error('Query timeout')), 5000)
       );
 
-      const urlsPromise = this.supabase.rpc('find_reusable_urls_fast', {
-        p_company: company,
-        p_role: role,
-        p_country: country,
+      const urlsPromise = this.supabase.rpc('find_reusable_urls_simple', {
+        p_company_name: company,
+        p_role_title: role,
         p_max_age_days: maxAgeDays,
         p_min_quality_score: minQualityScore
       });
@@ -196,14 +187,6 @@ export class UrlDeduplicationService {
       
       // Log performance metrics
       console.log(`URL deduplication completed in ${responseTime}ms, found ${urls.length} reusable URLs`);
-      
-      // Track metrics for monitoring
-      this.trackDeduplicationMetrics({
-        cache_hit_count: urls.length,
-        total_urls_needed: limit,
-        response_time_ms: responseTime,
-        api_calls_saved: Math.floor(urls.length * 0.8) // Estimate API savings
-      }).catch(err => console.warn('Failed to track metrics:', err));
 
       return {
         reusable_urls: urls,
@@ -220,81 +203,13 @@ export class UrlDeduplicationService {
     }
   }
 
-  // Store research results in cache
-  async cacheResearchResults(
-    company: string,
-    role: string | undefined,
-    country: string | undefined,
-    companyInsights: any,
-    rawSearchData: any,
-    sourceUrls: string[],
-    confidenceScore: number = 0.8
-  ): Promise<string | null> {
-    try {
-      // Generate cache key
-      const cacheKey = await this.generateCacheKey(company, role, country);
-      
-      const { data, error } = await this.supabase
-        .from('research_cache')
-        .upsert({
-          cache_key: cacheKey,
-          company_name: company,
-          role_title: role,
-          country: country,
-          company_insights: companyInsights,
-          raw_search_data: rawSearchData,
-          source_urls: sourceUrls,
-          cache_freshness_hours: 0,
-          confidence_score: confidenceScore,
-          cache_hits: 0
-        })
-        .select('id')
-        .single();
-
-      if (error) throw error;
-      return data.id;
-    } catch (error) {
-      console.error('Error caching research results:', error);
-      return null;
-    }
-  }
-
-  // Track URL usage for a search
-  async trackUrlUsage(
-    searchId: string,
-    scrapedUrlId: string,
-    usageType: 'reused' | 'fresh_scrape' | 'validation',
-    relevanceScore: number = 0.5
-  ): Promise<void> {
-    try {
-      // Record the usage
-      await this.supabase
-        .from('search_content_usage')
-        .insert({
-          search_id: searchId,
-          scraped_url_id: scrapedUrlId,
-          usage_type: usageType,
-          relevance_score: relevanceScore,
-          contributed_to_analysis: true
-        });
-
-      // Increment reuse counter if this is a reuse
-      if (usageType === 'reused') {
-        await this.supabase
-          .rpc('increment_url_reuse', { p_url_id: scrapedUrlId });
-      }
-    } catch (error) {
-      console.error('Error tracking URL usage:', error);
-    }
-  }
-
-  // Get content for previously scraped URLs
+  // Get content for previously scraped URLs (simplified)
   async getExistingContent(
     urls: string[],
     company: string,
     role?: string,
     country?: string
-  ): Promise<{ url: string; content: ScrapedContent; metadata: ScrapedUrl }[]> {
+  ): Promise<Array<{ url: string; content: string; title: string; ai_summary?: string }>> {
     try {
       // Add safeguards to prevent infinite calls
       if (!urls || urls.length === 0) {
@@ -302,17 +217,15 @@ export class UrlDeduplicationService {
       }
       
       // Limit to prevent excessive queries
-      const limitedUrls = urls.slice(0, 50);
+      const limitedUrls = urls.slice(0, 20);
       
       const { data, error } = await this.supabase
         .from('scraped_urls')
-        .select(`
-          *,
-          scraped_content (*)
-        `)
+        .select('url, title, full_content, ai_summary')
         .in('url', limitedUrls)
         .eq('company_name', company)
-        .limit(20); // Further limit results
+        .not('full_content', 'is', null)
+        .limit(10); // Further limit results
 
       if (error) {
         console.warn('Error getting existing content:', error);
@@ -320,11 +233,12 @@ export class UrlDeduplicationService {
       }
 
       return (data || [])
-        .filter((item: any) => item.scraped_content && item.scraped_content.length > 0)
+        .filter((item: any) => item.full_content)
         .map((item: any) => ({
           url: item.url,
-          content: item.scraped_content[0],
-          metadata: item
+          content: item.full_content,
+          title: item.title || '',
+          ai_summary: item.ai_summary
         }));
     } catch (error) {
       console.error('Error getting existing content:', error);
@@ -332,7 +246,7 @@ export class UrlDeduplicationService {
     }
   }
 
-  // Assess content quality based on various factors
+  // Enhanced content quality assessment (inspired by Aston AI)
   assessContentQuality(
     content: string,
     title: string,
@@ -341,11 +255,33 @@ export class UrlDeduplicationService {
   ): number {
     let score = 0.5; // Base score
 
-    // Content length factor
+    // Content length factor (enhanced thresholds)
     const wordCount = content.split(/\s+/).length;
-    if (wordCount > 500) score += 0.2;
-    if (wordCount > 1000) score += 0.1;
-    if (wordCount < 100) score -= 0.2;
+    if (wordCount > 800) score += 0.25; // High-quality long content
+    if (wordCount > 1500) score += 0.15; // Very comprehensive content
+    if (wordCount < 50) score -= 0.4; // Too short, likely low quality
+    if (wordCount < 20) return 0.1; // Extremely poor content
+    
+    // Aston AI pattern: Check for structured interview content
+    const contentLower = content.toLowerCase();
+    const titleLower = title.toLowerCase();
+    
+    // Interview experience quality indicators (Aston AI inspired)
+    const qualityPatterns = [
+      /interview\s+(process|experience|stages?)/gi,
+      /asked\s+me\s+(about|to)/gi,
+      /\d+\s+(rounds?|stages?|steps?)/gi,
+      /(technical|behavioral|coding)\s+(questions?|interview)/gi,
+      /hiring\s+(manager|process|decision)/gi,
+      /offer\s+(extended|received|rejected)/gi
+    ];
+    
+    const qualityMatches = qualityPatterns.reduce((count, pattern) => {
+      return count + (content.match(pattern) || []).length;
+    }, 0);
+    
+    if (qualityMatches >= 3) score += 0.3; // High interview relevance
+    if (qualityMatches >= 5) score += 0.2; // Excellent interview content
 
     // Content type factor
     switch (contentType) {
@@ -371,7 +307,6 @@ export class UrlDeduplicationService {
     }
 
     // Title quality indicators
-    const titleLower = title.toLowerCase();
     if (titleLower.includes('interview') || titleLower.includes('experience')) {
       score += 0.1;
     }
@@ -380,7 +315,6 @@ export class UrlDeduplicationService {
     }
 
     // Content quality indicators
-    const contentLower = content.toLowerCase();
     if (contentLower.includes('interview process') || contentLower.includes('interviewer asked')) {
       score += 0.1;
     }
@@ -390,24 +324,6 @@ export class UrlDeduplicationService {
 
     // Ensure score is between 0 and 1
     return Math.max(0, Math.min(1, score));
-  }
-
-  // Generate cache key for company/role/country combination
-  private async generateCacheKey(company: string, role?: string, country?: string): Promise<string> {
-    const { data, error } = await this.supabase
-      .rpc('generate_cache_key', {
-        p_company: company,
-        p_role: role,
-        p_country: country
-      });
-
-    if (error) {
-      console.error('Error generating cache key:', error);
-      // Fallback to simple concatenation
-      return btoa(`${company}|${role || ''}|${country || ''}`).replace(/[^a-zA-Z0-9]/g, '');
-    }
-
-    return data;
   }
 
   // Classify content type based on URL and content
@@ -507,62 +423,32 @@ export class UrlDeduplicationService {
     return uniqueInsights;
   }
 
-  // Get cached content using simplified function
-  async getCachedContent(urls: string[]): Promise<Array<{ url: string; content: string; title: string }>> {
-    if (!urls || urls.length === 0) return [];
-    
+  // Increment URL reuse counter
+  async incrementUrlReuse(urlId: string): Promise<void> {
     try {
-      const timeoutPromise = new Promise<never>((_, reject) => 
-        setTimeout(() => reject(new Error('Content timeout')), 3000)
-      );
-
-      const contentPromise = this.supabase.rpc('get_cached_content_simple', {
-        p_urls: urls.slice(0, 20) // Limit URLs to prevent timeouts
+      // Use RPC function for atomic increment
+      await this.supabase.rpc('increment_url_reuse_count', {
+        url_id: urlId
       });
-
-      const { data, error } = await Promise.race([contentPromise, timeoutPromise]);
-      
-      if (error) {
-        console.warn('Failed to get cached content:', error);
-        return [];
-      }
-      
-      return data || [];
     } catch (error) {
-      console.warn('Cached content retrieval failed:', error.message);
-      return [];
+      console.error('Error incrementing URL reuse:', error);
     }
   }
 
-  // Track deduplication performance metrics
-  private async trackDeduplicationMetrics(metrics: {
-    cache_hit_count: number;
-    total_urls_needed: number;
-    response_time_ms: number;
-    api_calls_saved: number;
-  }): Promise<void> {
-    try {
-      await this.supabase.from('url_deduplication_metrics').insert({
-        cache_hit_count: metrics.cache_hit_count,
-        total_urls_needed: metrics.total_urls_needed,
-        response_time_ms: metrics.response_time_ms,
-        api_calls_saved: metrics.api_calls_saved
-      });
-    } catch (error) {
-      // Silently fail metrics tracking to not impact main flow
-    }
-  }
-
-  // Clean up old cached data (maintenance function)
-  async cleanupOldData(maxAgeDays: number = 90): Promise<number> {
+  // Clean up old URLs (simplified)
+  async cleanupOldUrls(maxAgeDays: number = 90, minQualityScore: number = 0.1): Promise<number> {
     try {
       const { data, error } = await this.supabase
-        .rpc('cleanup_old_cache_data', { p_max_age_days: maxAgeDays });
+        .from('scraped_urls')
+        .delete()
+        .lt('content_quality_score', minQualityScore)
+        .eq('times_reused', 0)
+        .lt('first_scraped_at', new Date(Date.now() - maxAgeDays * 24 * 60 * 60 * 1000).toISOString());
 
       if (error) throw error;
-      return data || 0;
+      return data?.length || 0;
     } catch (error) {
-      console.error('Error cleaning up old data:', error);
+      console.error('Error cleaning up old URLs:', error);
       return 0;
     }
   }

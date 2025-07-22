@@ -61,15 +61,9 @@ export const tavilyAnalyticsService = {
 
       if (searchesError) throw searchesError;
 
-      // Get daily usage stats
-      const { data: dailyStats, error: statsError } = await supabase
-        .from("tavily_usage_stats")
-        .select("*")
-        .eq("user_id", user.id)
-        .gte("date", new Date(Date.now() - days * 24 * 60 * 60 * 1000).toISOString().split('T')[0])
-        .order("date", { ascending: false });
-
-      if (statsError) throw statsError;
+      // Note: tavily_usage_stats table was removed in optimization
+      // Using empty array for dailyStats since we now use simplified logging
+      const dailyStats: any[] = [];
 
       // Calculate aggregated analytics
       const totalCreditsUsed = recentSearches?.reduce((sum, search) => sum + (search.credits_used || 0), 0) || 0;
@@ -172,17 +166,22 @@ export const tavilyAnalyticsService = {
         throw new Error("No authenticated user");
       }
 
+      // Simple query to find similar searches (function was removed in optimization)
       const { data, error } = await supabase
-        .rpc('find_similar_tavily_search', {
-          p_query_text: queryText,
-          p_api_type: apiType,
-          p_search_depth: searchDepth,
-          p_hours_threshold: hoursThreshold
-        });
+        .from("tavily_searches")
+        .select("*")
+        .eq("user_id", user.id)
+        .eq("query_text", queryText)
+        .eq("api_type", apiType)
+        .eq("response_status", 200)
+        .gte("created_at", new Date(Date.now() - hoursThreshold * 60 * 60 * 1000).toISOString())
+        .order("created_at", { ascending: false })
+        .limit(1)
+        .single();
 
-      if (error) throw error;
+      if (error && error.code !== 'PGRST116') throw error; // PGRST116 = no rows found
 
-      return { search: data?.[0] || null, success: true };
+      return { search: data || null, success: true };
     } catch (error) {
       console.error("Error finding similar search:", error);
       return { error, success: false };

@@ -1,6 +1,7 @@
 import { serve } from "https://deno.land/std@0.177.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.43.2";
 import { searchTavily, extractTavily, extractInterviewReviewUrls, TavilySearchRequest } from "../_shared/tavily-client.ts";
+import { searchWithFallback } from "../_shared/duckduckgo-fallback.ts";
 import { callOpenAI, parseJsonResponse, OpenAIRequest } from "../_shared/openai-client.ts";
 import { SearchLogger } from "../_shared/logger.ts";
 import { RESEARCH_CONFIG, getAllSearchQueries } from "../_shared/config.ts";
@@ -73,9 +74,9 @@ async function searchCompanyInfo(
   supabase?: any,
   logger?: SearchLogger
 ): Promise<any> {
-  // Set a maximum execution time for the entire function (90 seconds)
+  // Set a maximum execution time for the entire function (20 seconds)
   const functionTimeout = new Promise((_, reject) => 
-    setTimeout(() => reject(new Error('Company research function timeout')), 90000)
+    setTimeout(() => reject(new Error('Company research function timeout')), 20000)
   );
 
   const researchPromise = async () => {
@@ -186,8 +187,8 @@ async function searchCompanyInfo(
         }))
       }];
     } else {
-      // Get search queries from centralized config - Enhanced for comprehensive forum coverage
-      const searchQueries = getAllSearchQueries(company, role, country);
+      // Get search queries from centralized config - LIMITED to 2 queries to prevent timeout
+      const searchQueries = getAllSearchQueries(company, role, country).slice(0, 2);
 
       logger?.logPhaseTransition('CACHE_CHECK', 'DISCOVERY', { 
         queriesCount: searchQueries.length,
@@ -202,17 +203,17 @@ async function searchCompanyInfo(
       
       const request: TavilySearchRequest = {
         query: query.trim(),
-        searchDepth: RESEARCH_CONFIG.tavily.searchDepth,
-        maxResults: RESEARCH_CONFIG.tavily.maxResults.discovery,
+        searchDepth: 'basic', // Reduced depth for speed
+        maxResults: 3, // Reduced from default to prevent timeout
         includeAnswer: true,
-        includeRawContent: RESEARCH_CONFIG.tavily.includeRawContent,
+        includeRawContent: false, // Disabled for speed
         includeDomains: RESEARCH_CONFIG.search.allowedDomains,
         timeRange: RESEARCH_CONFIG.tavily.timeRange
       };
       
       try {
-        // Use regular search without deduplication to avoid timeouts
-        const result = await searchTavily(tavilyApiKey, request, searchId, userId, supabase);
+        // Use search with fallback (Aston AI multi-engine pattern)
+        const result = await searchWithFallback(tavilyApiKey, query.trim(), request.maxResults);
         const duration = Date.now() - startTime;
         
         logger?.logTavilySearch(query, 'DISCOVERY_SUCCESS', request, result, undefined, duration);
