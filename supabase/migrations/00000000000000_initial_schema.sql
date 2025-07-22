@@ -1,5 +1,6 @@
 -- Intel Prep ACE - Complete Database Schema
 -- This represents the final optimized state after all migrations
+-- Last updated: January 2025 - Clean schema verification test
 
 -- ==============================================
 -- CORE APPLICATION TABLES
@@ -51,12 +52,32 @@ CREATE TABLE public.interview_stages (
   created_at TIMESTAMP WITH TIME ZONE DEFAULT now() NOT NULL
 );
 
--- Interview questions (generated for each stage)
+-- Interview questions (enhanced with comprehensive metadata)
 CREATE TABLE public.interview_questions (
   id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
   stage_id UUID REFERENCES public.interview_stages(id) ON DELETE CASCADE NOT NULL,
+  search_id UUID REFERENCES public.searches(id) ON DELETE CASCADE NOT NULL,
+  
+  -- Question content and metadata
   question TEXT NOT NULL,
-  created_at TIMESTAMP WITH TIME ZONE DEFAULT now() NOT NULL
+  category TEXT NOT NULL CHECK (category IN ('behavioral', 'technical', 'situational', 'company_specific', 'role_specific', 'experience_based', 'cultural_fit')),
+  question_type TEXT NOT NULL,
+  difficulty TEXT NOT NULL CHECK (difficulty IN ('Easy', 'Medium', 'Hard')),
+  
+  -- Enhanced guidance and context
+  rationale TEXT,
+  suggested_answer_approach TEXT,
+  evaluation_criteria TEXT[],
+  follow_up_questions TEXT[],
+  star_story_fit BOOLEAN DEFAULT false,
+  company_context TEXT,
+  
+  -- Usage and quality metrics
+  usage_count INTEGER DEFAULT 0,
+  confidence_score FLOAT DEFAULT 0.0,
+  
+  created_at TIMESTAMP WITH TIME ZONE DEFAULT now() NOT NULL,
+  updated_at TIMESTAMP WITH TIME ZONE DEFAULT now() NOT NULL
 );
 
 -- User practice sessions
@@ -121,25 +142,7 @@ CREATE TABLE public.scraped_urls (
   updated_at TIMESTAMP WITH TIME ZONE DEFAULT now() NOT NULL
 );
 
--- Enhanced question banks for advanced question generation
-CREATE TABLE public.enhanced_question_banks (
-  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-  search_id UUID REFERENCES public.searches(id) ON DELETE CASCADE,
-  company_name TEXT NOT NULL,
-  role_title TEXT,
-  
-  -- Question content
-  question_text TEXT NOT NULL,
-  question_type TEXT CHECK (question_type IN ('behavioral', 'technical', 'case_study', 'company_specific')),
-  difficulty_level TEXT CHECK (difficulty_level IN ('easy', 'medium', 'hard')),
-  
-  -- Metadata
-  source_urls TEXT[],
-  confidence_score FLOAT DEFAULT 0.0,
-  usage_count INTEGER DEFAULT 0,
-  
-  created_at TIMESTAMP WITH TIME ZONE DEFAULT now() NOT NULL
-);
+-- Note: enhanced_question_banks table removed - functionality consolidated into interview_questions
 
 -- CV-Job comparison results
 CREATE TABLE public.cv_job_comparisons (
@@ -348,7 +351,7 @@ ALTER TABLE public.interview_questions ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.practice_sessions ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.practice_answers ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.scraped_urls ENABLE ROW LEVEL SECURITY;
-ALTER TABLE public.enhanced_question_banks ENABLE ROW LEVEL SECURITY;
+-- Note: enhanced_question_banks RLS removed - functionality consolidated into interview_questions
 ALTER TABLE public.cv_job_comparisons ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.tavily_searches ENABLE ROW LEVEL SECURITY;
 
@@ -408,10 +411,7 @@ CREATE POLICY "Service role can manage scraped URLs"
 CREATE POLICY "Authenticated users can view scraped URLs" 
   ON public.scraped_urls FOR SELECT USING (auth.uid() IS NOT NULL);
 
--- Enhanced question banks policies
-CREATE POLICY "Users can view enhanced questions for their searches" 
-  ON public.enhanced_question_banks FOR SELECT 
-  USING (auth.uid() IN (SELECT user_id FROM public.searches WHERE id = enhanced_question_banks.search_id));
+-- Note: Enhanced question bank policies removed - consolidated into interview_questions policies
 
 -- CV job comparisons policies
 CREATE POLICY "Users can view their own CV comparisons" 
