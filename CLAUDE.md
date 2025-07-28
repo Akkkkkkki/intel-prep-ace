@@ -63,24 +63,28 @@ INT Interview Prep Tool is an AI-powered platform that helps job candidates prep
 ```bash
 npm run dev          # Start Vite dev server (port 8080)
 npm run build        # Build for production
+npm run build:dev    # Build for development mode
 npm run preview      # Preview production build
 npm run lint         # Run ESLint
-npm run typecheck    # Run TypeScript type checking
+# Note: No typecheck script exists - use IDE or tsc manually
 ```
 
 ### Supabase Development
 ```bash
 # Generate types from remote database
-npx supabase gen types typescript --project-id YOUR_PROJECT_ID > src/types/supabase.ts
+npx supabase gen types typescript --project-id xjjjvefsrkcszhuwtoss > src/types/supabase.ts
 
 # Local development (if needed)
 npx supabase start   # Start local Supabase
 npx supabase stop    # Stop local Supabase
 npx supabase db reset --db-url YOUR_DATABASE_URL  # Reset database
 
-# Deploy functions
-npx supabase functions deploy
-npx supabase functions deploy FUNCTION_NAME  # Deploy specific function
+# Deploy functions (use npm scripts for environment loading)
+npm run functions:deploy                    # Deploy all functions
+npm run functions:deploy-single FUNCTION_NAME  # Deploy specific function
+npm run functions:serve                     # Local function development with .env.local
+npm run db:push                             # Push local schema changes to remote
+npm run db:pull                             # Pull remote schema to local
 ```
 
 ## Configuration Files
@@ -88,13 +92,15 @@ npx supabase functions deploy FUNCTION_NAME  # Deploy specific function
 ### Core Configuration
 - **`supabase/functions/_shared/config.ts`**: Centralized configuration for all Edge Functions
 - **`src/lib/supabase.ts`**: Frontend Supabase client setup
-- **`vite.config.ts`**: Vite build configuration
+- **`vite.config.ts`**: Vite build configuration with React SWC plugin, port 8080, path aliases
 - **`tsconfig.json`**: TypeScript configuration (relaxed for rapid development)
-- **`tailwind.config.js`**: Tailwind CSS with custom theme
+- **`eslint.config.js`**: Modern flat config with React hooks and refresh plugins
+- **`tailwind.config.ts`**: Tailwind CSS with custom theme and shadcn/ui integration
 
 ### Environment Variables
-- **Frontend**: `.env.local` with `VITE_SUPABASE_*` variables
-- **Edge Functions**: Supabase secrets managed via dashboard
+- **Frontend**: `VITE_SUPABASE_URL` and `VITE_SUPABASE_ANON_KEY` (for local dev)
+- **Edge Functions**: `SUPABASE_URL`, `SUPABASE_SERVICE_ROLE_KEY`, `OPENAI_API_KEY`, `TAVILY_API_KEY`
+- **Management**: Environment secrets managed via Supabase Dashboard → Edge Functions → Settings
 
 ## Environment Setup
 
@@ -124,13 +130,55 @@ npx supabase functions deploy FUNCTION_NAME  # Deploy specific function
 - **`practice_answers`**: User practice responses
 
 ### Key Features
-- **Enhanced Question System**: All questions include comprehensive metadata, guidance, and company context
-- **Consolidated Architecture**: Single source of truth for interview questions (enhanced_question_banks removed)
-- **Premium Experience for All**: Every user gets high-quality questions with detailed preparation guidance
+- **Research-Driven Question Generation**: 120-150 questions per search with research-first approach
+- **Consistent Volume, Adaptive Complexity**: Same quantity for all experience levels, different sophistication
+- **Enhanced Company Research**: Prioritized extraction of actual interview questions from candidate reports
+- **Experience-Level Adaptation**: Questions calibrated to junior/mid/senior complexity without quantity variation
+- **Company-Specific Intelligence**: 60%+ questions reference company-specific information when available
+- **Consolidated Architecture**: Single source of truth for interview questions
 - **Quality Scoring**: Automated content assessment (0-1 scale) and question confidence scoring
 - **Cost Optimization**: Intelligent URL deduplication reduces API costs by 40%
 - **Performance**: Optimized indexes and simplified RLS policies
 - **Row Level Security (RLS)** on all essential tables
+
+## Enhanced Question Generation System
+
+### **Research-Driven Question Architecture**
+
+The question generation system has been significantly enhanced to provide comprehensive, company-specific interview preparation:
+
+**Core Principles:**
+- **Research-First Approach**: Actual questions from candidate reports form the foundation
+- **Consistent Volume**: 120-150 total questions regardless of experience level
+- **Adaptive Complexity**: Same quantity, different sophistication based on candidate seniority
+- **Company Intelligence**: 60%+ questions incorporate company-specific research when available
+
+**Question Generation Workflow:**
+1. **Company Research Enhancement**: Extract 15-25+ actual questions from Glassdoor, Reddit, Blind reports
+2. **Experience-Level Calibration**: Adapt question complexity (not quantity) to candidate's experience
+3. **Category Distribution**: 18-22 questions across 7 core categories
+4. **Research Integration**: Use extracted questions as foundation, generate contextual variations
+5. **Gap Filling**: Ensure comprehensive coverage with industry-standard and role-specific questions
+
+**Question Categories & Targets:**
+- **Behavioral**: 18-22 questions (STAR method focus)
+- **Technical**: 18-22 questions (complexity adapted to experience level)
+- **Situational**: 18-22 questions (role-specific scenarios)
+- **Company-Specific**: 18-22 questions (culture, values, recent news)
+- **Role-Specific**: 18-22 questions (job requirements focus)
+- **Experience-Based**: 18-22 questions (past projects, achievements)
+- **Cultural Fit**: 18-22 questions (working style, team dynamics)
+
+**Experience-Level Differentiation:**
+- **Junior (0-2 years)**: Fundamentals, learning ability, basic problem-solving
+- **Mid-Level (3-7 years)**: Project ownership, technical depth, team collaboration
+- **Senior (8+ years)**: Strategic thinking, architecture, organizational impact
+
+**Quality Assurance:**
+- Minimum 60% research-derived questions when company data available
+- Question diversity requirements (no similar phrasing)
+- Company context validation for relevance
+- Automated confidence scoring (0.0-1.0 scale)
 
 ## AI Integration (Microservices)
 
@@ -142,12 +190,12 @@ npx supabase functions deploy FUNCTION_NAME  # Deploy specific function
 - **`url-deduplication.ts`**: Smart caching for research with enhanced quality scoring
 
 ### Service Functions
-1. **Company Research**: Multi-source company analysis with Tavily/DuckDuckGo fallbacks
+1. **Company Research**: Multi-source company analysis with enhanced interview question extraction
 2. **Interview Research**: Orchestration service that synthesizes all data sources
 3. **Job Analysis**: Job description breakdown and requirement extraction
 4. **CV Analysis**: Resume parsing with intelligent skill extraction
 5. **CV-Job Comparison**: Personalized gap analysis and preparation strategies
-6. **Interview Question Generator**: Stage-specific question generation
+6. **Interview Question Generator**: Research-driven comprehensive question generation (120-150 questions per search)
 
 ## Design System
 

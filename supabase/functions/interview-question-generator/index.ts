@@ -106,13 +106,15 @@ async function generateInterviewQuestions(
     questionContext += `Key Achievements: ${cvAnalysis.key_achievements?.join(', ')}\n`;
     questionContext += `Experience History: ${cvAnalysis.experience?.map(exp => `${exp.role} at ${exp.company}`).join(', ')}\n`;
     
-    // Add specific guidance based on experience level
+    // Add specific guidance based on experience level - SAME VOLUME, DIFFERENT COMPLEXITY
+    questionContext += `\nTARGET: Generate 18-22 questions per category for TOTAL 120-150 questions regardless of experience level.\n`;
+    
     if (experienceLevel === 'junior') {
-      questionContext += `\nFOCUS FOR JUNIOR CANDIDATE: Fundamentals, learning ability, potential, adaptability. Generate 6-8 questions per category.\n`;
+      questionContext += `\nFOCUS FOR JUNIOR CANDIDATE: Fundamentals, learning ability, potential, adaptability. Questions should focus on basic concepts, learning scenarios, and growth mindset.\n`;
     } else if (experienceLevel === 'mid') {
-      questionContext += `\nFOCUS FOR MID-LEVEL CANDIDATE: Execution, problem-solving, leadership potential, project management. Generate 8-10 questions per category.\n`;
+      questionContext += `\nFOCUS FOR MID-LEVEL CANDIDATE: Execution, problem-solving, leadership potential, project management. Questions should focus on project ownership, technical depth, and team collaboration.\n`;
     } else {
-      questionContext += `\nFOCUS FOR SENIOR CANDIDATE: Strategic thinking, mentorship, complex problem-solving, system design, team leadership. Generate 10-12 questions per category.\n`;
+      questionContext += `\nFOCUS FOR SENIOR CANDIDATE: Strategic thinking, mentorship, complex problem-solving, system design, team leadership. Questions should focus on architecture, business impact, and organizational influence.\n`;
     }
   }
 
@@ -130,20 +132,19 @@ async function generateInterviewQuestions(
           content: `You are an expert interview preparation specialist with deep knowledge of hiring practices across major companies. Generate comprehensive, realistic interview questions based on the provided context.
 
 Focus on:
-1. Generate COMPREHENSIVE question banks based on candidate's experience level (junior: 8-12 per category, mid: 12-15 per category, senior: 15-20 per category)
-2. Questions that align with the company's interview philosophy and culture
-3. Questions that test for the specific skills and experience required for the role seniority
-4. Questions that are appropriate for the interview stage and candidate level
-5. Questions that leverage actual interview experiences from reviews
-6. Questions that are personalized to the candidate's background and experience
-7. Use recent interview trends and current industry practices
-8. Ensure total questions across all categories reach AT LEAST 80-120 questions for a comprehensive practice experience
+1. RESEARCH-FIRST APPROACH: Prioritize questions derived from actual company interview experiences and research
+2. CONSISTENT VOLUME: Generate 18-22 questions per category (120-150 total) regardless of experience level
+3. ADAPTIVE COMPLEXITY: Same volume but different complexity/focus based on candidate's experience level
+4. COMPANY-SPECIFIC: At least 60% of questions must reference company-specific information, culture, or research findings
+5. REAL QUESTIONS: Use actual questions from interview reviews when available, then generate variations
+6. STAGE-APPROPRIATE: Questions must align with the specific interview stage and interviewer type
+7. EXPERIENCE-MATCHED: Question complexity and focus must match candidate's experience level
 
-MANDATORY MINIMUM REQUIREMENTS:
-- Each category MUST contain at least 8-20 questions depending on experience level
-- Total question bank MUST exceed 80 questions for junior, 100+ for mid-level, 120+ for senior
-- Include diverse question types within each category (situational, hypothetical, past experience, problem-solving)
-- Generate questions of varying difficulty levels within each category
+MANDATORY REQUIREMENTS:
+- TOTAL: 120-150 questions across all categories (consistent for all experience levels)
+- RESEARCH INTEGRATION: Use actual questions from company research as foundation
+- QUESTION DIVERSITY: Include situational, behavioral, technical, and company-specific variations
+- COMPLEXITY ADAPTATION: Adjust question sophistication to match experience level, not quantity
 
 For each question, provide:
 - The specific question
@@ -155,13 +156,16 @@ For each question, provide:
 - Whether it's suitable for STAR method
 - Company-specific context
 
-CRITICAL REQUIREMENTS - STRICTLY ENFORCE: 
-- For junior candidates (0-2 years): Focus on fundamentals, learning ability, potential. Generate 8-12 questions per category. MINIMUM 80 total questions.
-- For mid-level candidates (3-7 years): Focus on execution, problem-solving, leadership potential. Generate 12-15 questions per category. MINIMUM 100 total questions.
-- For senior candidates (8+ years): Focus on strategic thinking, mentorship, complex problem-solving. Generate 15-20 questions per category. MINIMUM 120 total questions.
-- EACH category must be fully populated - no empty or sparse categories allowed.
-- Include mix of difficulty levels: 30% Easy, 50% Medium, 20% Hard within each category.
-- ABSOLUTELY NO SHORTCUTS - generate the full question count specified above.
+CRITICAL REQUIREMENTS - STRICTLY ENFORCE:
+- CONSISTENT VOLUME: Generate 18-22 questions per category for ALL experience levels (120-150 total)
+- RESEARCH-DRIVEN: If company research contains actual interview questions, use them as foundation and generate variations
+- EXPERIENCE ADAPTATION: Adjust question complexity and focus, NOT quantity:
+  * Junior (0-2 years): Focus on fundamentals, learning scenarios, basic problem-solving
+  * Mid-level (3-7 years): Focus on project ownership, technical depth, team collaboration  
+  * Senior (8+ years): Focus on strategy, architecture, organizational impact
+- COMPANY CONTEXT: 60%+ of questions must reference specific company information, culture, or research findings
+- QUALITY DISTRIBUTION: 30% Easy, 50% Medium, 20% Hard (adjust complexity based on experience level)
+- NO SHORTCUTS: Generate the full 120-150 questions with proper research integration
 
 You MUST return ONLY valid JSON in this exact structure - no markdown, no additional text:
 
@@ -264,7 +268,7 @@ You MUST return ONLY valid JSON in this exact structure - no markdown, no additi
           content: `Generate comprehensive interview questions based on this context:\n\n${questionContext}`
         }
       ],
-      max_tokens: 8000,
+      max_tokens: 12000,
       temperature: 0.7,
     }),
   });

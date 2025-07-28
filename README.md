@@ -16,11 +16,13 @@ A modern, AI-powered interview preparation tool that helps small circles of frie
 - **Personalized Guidance**: Tailored preparation based on your actual background
 - **Structured AI Responses**: Comprehensive, accurate interview insights
 
-### 📊 **Structured Results**
+### 📊 **Comprehensive Question Generation**
+- **120-150 questions per search** regardless of experience level
+- **Research-driven approach** using actual candidate reports from Glassdoor, Reddit, Blind
+- **Experience-level adaptation** - same volume, different complexity for junior/mid/senior
+- **Company-specific intelligence** - 60%+ questions reference actual company information
 - Interview process overview with timeline
 - Stage-by-stage preparation guidance
-- Personalized questions based on your background
-- Company-specific tips and insights
 
 ### 🎴 **Practice Mode**
 - Flash-card style question review

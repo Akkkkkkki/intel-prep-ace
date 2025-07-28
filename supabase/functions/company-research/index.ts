@@ -359,13 +359,22 @@ async function analyzeCompanyData(
     systemPrompt: `You are an expert company research analyst specializing in interview preparation. Based on the provided research data from Glassdoor, Blind, 1point3acres, Reddit, LinkedIn, and other sources, extract comprehensive company insights with focus on recent interview trends (2024-2025).
 
 Focus on REAL candidate experiences from the raw content provided:
-1. ACCURATE interview process stages and rounds (extract specific number of rounds from candidate reports)
-2. Interview experiences and feedback from actual candidates (prioritize recent ones)
-3. Common interview questions mentioned in reviews (especially recent ones)  
+1. EXTRACT ALL INTERVIEW QUESTIONS: Priority #1 - Find and extract EVERY specific interview question mentioned by candidates
+2. ACCURATE interview process stages and rounds (extract specific number of rounds from candidate reports)
+3. Interview experiences and feedback from actual candidates (prioritize recent ones)
 4. What hiring managers look for based on employee feedback
 5. Specific red flags and success factors from actual interviews
 6. Company culture and values as they relate to interviews
 7. Interview timeline and duration from candidate reports
+
+CRITICAL QUESTION EXTRACTION REQUIREMENTS:
+- Search for exact question text in quotes, after "asked me", "they asked", "question was", etc.
+- Look for behavioral questions starting with "Tell me about", "Describe a time", "Give an example"
+- Identify technical questions with specific technologies, algorithms, or system design topics
+- Find situational questions with hypothetical scenarios or "What would you do if..."
+- Extract company-specific questions about company values, culture, or recent news
+- Capture role-specific questions about job responsibilities and requirements
+- MINIMUM TARGET: Extract 15-25 actual questions from candidate reports when available
 
 CRITICAL: Pay special attention to the interview process structure - how many rounds, what each round consists of, duration, and who conducts each round. Base this ENTIRELY on actual candidate experiences from the raw content, not generic assumptions.
 
@@ -412,10 +421,10 @@ You MUST return ONLY valid JSON in this exact structure:
     "process_duration": "string (typical timeline)"
   },
   "interview_questions_bank": {
-    "behavioral": ["array of behavioral questions mentioned"],
-    "technical": ["array of technical questions mentioned"],
-    "situational": ["array of situational questions mentioned"],
-    "company_specific": ["array of company-specific questions"]
+    "behavioral": ["EXACT behavioral questions mentioned by candidates - minimum 8-12 questions"],
+    "technical": ["EXACT technical questions mentioned by candidates - minimum 8-12 questions"],
+    "situational": ["EXACT situational questions mentioned by candidates - minimum 6-10 questions"],
+    "company_specific": ["EXACT company-specific questions mentioned by candidates - minimum 6-10 questions"]
   },
   "hiring_manager_insights": {
     "what_they_look_for": ["array of qualities mentioned as important"],
