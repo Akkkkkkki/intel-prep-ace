@@ -266,30 +266,6 @@ The app uses a custom design system based on fresh green colors:
 
 All components follow accessibility guidelines and responsive design principles.
 
-## 🤝 Contributing
-
-We welcome contributions! Here's how to get started:
-
-1. **Fork the Repository**
-2. **Create Feature Branch**
-   ```bash
-   git checkout -b feature/your-feature-name
-   ```
-3. **Make Changes**
-   - Follow TypeScript and React best practices
-   - Use the existing design system
-   - Add appropriate error handling
-4. **Test Changes**
-   - Verify responsive design
-   - Test authentication flows
-   - Validate AI integration
-5. **Submit Pull Request**
-
-### Development Guidelines
-- Use TypeScript for type safety
-- Follow existing code style and patterns
-- Include descriptive commit messages
-- Test on multiple browsers and devices
 
 ## 🔧 Troubleshooting
 
