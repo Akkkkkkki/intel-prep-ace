@@ -3,6 +3,42 @@
 
 import { RESEARCH_CONFIG } from "./config.ts";
 
+// Dynamic difficulty rating based on company tier and platform
+function determineDifficultyRating(company: string, role: string, platform: string): string {
+  const companyLower = company.toLowerCase();
+  const roleLower = (role || '').toLowerCase();
+  
+  // FAANG and top-tier companies
+  const topTierCompanies = ['google', 'apple', 'facebook', 'meta', 'amazon', 'netflix', 'microsoft', 'uber', 'airbnb', 'stripe'];
+  const isTopTier = topTierCompanies.some(tier => companyLower.includes(tier));
+  
+  // Senior/principal roles are generally harder
+  const isSeniorRole = roleLower.includes('senior') || roleLower.includes('principal') || roleLower.includes('lead');
+  
+  // Platform-specific difficulty tendencies
+  if (platform === 'blind') {
+    // Blind tends to have more senior engineers, higher difficulty baseline
+    return isTopTier || isSeniorRole ? 'very hard' : 'hard';
+  }
+  
+  if (platform === 'glassdoor') {
+    // Glassdoor has mixed levels, more moderate difficulty
+    if (isTopTier && isSeniorRole) return 'hard';
+    if (isTopTier || isSeniorRole) return 'medium-hard';
+    return 'medium';
+  }
+  
+  if (platform === '1point3acres') {
+    // 1point3acres often has new grad perspectives
+    return isTopTier ? 'hard' : 'medium';
+  }
+  
+  // Default based on company tier
+  if (isTopTier) return 'hard';
+  if (isSeniorRole) return 'medium-hard';
+  return 'medium';
+}
+
 export interface InterviewExperience {
   url: string;
   title: string;
@@ -129,7 +165,7 @@ export class GlassdoorScraper extends NativeScraper {
         platform: 'glassdoor',
         company,
         role,
-        difficulty_rating: 'medium',
+        difficulty_rating: determineDifficultyRating(company, role, 'glassdoor'),
         experience_type: 'positive',
         date_posted: new Date().toISOString().split('T')[0],
         author: 'anonymous_glassdoor_user',
@@ -209,7 +245,7 @@ export class RedditScraper extends NativeScraper {
         platform: 'reddit',
         company,
         role,
-        difficulty_rating: 'hard',
+        difficulty_rating: determineDifficultyRating(company, role, 'blind'),
         experience_type: 'positive',
         date_posted: new Date().toISOString().split('T')[0],
         author: 'reddit_user_123',
@@ -274,7 +310,7 @@ export class BlindScraper extends NativeScraper {
         platform: 'blind',
         company,
         role,
-        difficulty_rating: 'medium',
+        difficulty_rating: determineDifficultyRating(company, role, 'glassdoor'),
         experience_type: 'neutral',
         date_posted: new Date().toISOString().split('T')[0],
         author: 'anonymous_blind_user',
@@ -330,7 +366,7 @@ export class LeetCodeScraper extends NativeScraper {
         platform: 'leetcode',
         company,
         role: role || 'Software Engineer',
-        difficulty_rating: 'hard',
+        difficulty_rating: determineDifficultyRating(company, role, 'blind'),
         experience_type: 'positive',
         date_posted: new Date().toISOString().split('T')[0],
         metadata: {

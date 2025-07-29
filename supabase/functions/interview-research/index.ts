@@ -2,6 +2,7 @@ import { serve } from "https://deno.land/std@0.177.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.43.2";
 import { SearchLogger } from "../_shared/logger.ts";
 import { RESEARCH_CONFIG } from "../_shared/config.ts";
+import { ProgressTracker, PROGRESS_STEPS, CONCURRENT_TIMEOUTS, executeWithTimeout } from "../_shared/progress-tracker.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -578,6 +579,202 @@ You MUST return ONLY valid JSON in this exact structure - no markdown, no additi
   }
 }
 
+// Helper functions for dynamic question analysis and categorization
+function categorizeQuestion(question: string, stageName: string): string {
+  const questionLower = question.toLowerCase();
+  
+  // Behavioral indicators
+  if (questionLower.includes('tell me about') || questionLower.includes('describe a time') || 
+      questionLower.includes('give me an example') || questionLower.includes('walk me through')) {
+    return 'behavioral';
+  }
+  
+  // Technical indicators
+  if (questionLower.includes('algorithm') || questionLower.includes('code') || questionLower.includes('system design') ||
+      questionLower.includes('technical') || questionLower.includes('programming') || questionLower.includes('database')) {
+    return 'technical';
+  }
+  
+  // Company-specific indicators
+  if (questionLower.includes('company') || questionLower.includes('culture') || questionLower.includes('values') ||
+      questionLower.includes('why us') || questionLower.includes('why here')) {
+    return 'company_specific';
+  }
+  
+  // Situational indicators
+  if (questionLower.includes('what would you do') || questionLower.includes('how would you handle') ||
+      questionLower.includes('if you were') || questionLower.includes('scenario')) {
+    return 'situational';
+  }
+  
+  // Role-specific based on stage
+  if (stageName.toLowerCase().includes('technical') || stageName.toLowerCase().includes('coding')) {
+    return 'technical';
+  }
+  
+  return 'general';
+}
+
+function determineDifficulty(question: any, jobRequirements: any, cvAnalysis: any): string {
+  // If question already has difficulty, use it
+  if (question.difficulty && question.difficulty !== 'Medium') {
+    return question.difficulty;
+  }
+  
+  // Determine from job requirements
+  if (jobRequirements?.experience_level) {
+    const expLevel = jobRequirements.experience_level.toLowerCase();
+    if (expLevel.includes('senior') || expLevel.includes('lead') || expLevel.includes('principal')) {
+      return 'Hard';
+    }
+    if (expLevel.includes('junior') || expLevel.includes('entry')) {
+      return 'Easy';
+    }
+  }
+  
+  // Determine from CV analysis
+  if (cvAnalysis?.aiAnalysis?.experience_years || cvAnalysis?.experience_years) {
+    const years = cvAnalysis.aiAnalysis?.experience_years || cvAnalysis.experience_years;
+    if (years >= 8) return 'Hard';
+    if (years <= 2) return 'Easy';
+  }
+  
+  return 'Medium';
+}
+
+function determineDifficultyFromContext(question: string, jobRequirements: any, cvAnalysis: any, stageName: string): string {
+  const questionLower = question.toLowerCase();
+  
+  // Technical questions are generally harder
+  if (questionLower.includes('system design') || questionLower.includes('architecture')) {
+    return 'Hard';
+  }
+  
+  // Basic behavioral questions
+  if (questionLower.includes('tell me about yourself')) {
+    return 'Easy';
+  }
+  
+  // Use job requirements and CV analysis
+  return determineDifficulty({ difficulty: null }, jobRequirements, cvAnalysis);
+}
+
+function generateAnswerApproach(question: string, category: string): string {
+  const questionLower = question.toLowerCase();
+  
+  if (category === 'behavioral') {
+    return 'Use the STAR method (Situation, Task, Action, Result) to structure your response with specific examples from your experience';
+  }
+  
+  if (category === 'technical') {
+    if (questionLower.includes('system design')) {
+      return 'Start with requirements gathering, then discuss high-level architecture, dive into components, and address scalability concerns';
+    }
+    return 'Explain your thought process clearly, discuss trade-offs, and provide concrete examples or pseudocode when relevant';
+  }
+  
+  if (category === 'company_specific') {
+    return 'Demonstrate knowledge of the company\'s values, recent developments, and how your goals align with their mission';
+  }
+  
+  if (category === 'situational') {
+    return 'Outline your problem-solving approach, consider multiple perspectives, and explain your reasoning for the chosen solution';
+  }
+  
+  return 'Provide a clear, structured response with specific examples that demonstrate your relevant skills and experience';
+}
+
+function generateEvaluationCriteria(category: string, companyInsights: any, jobRequirements: any): string[] {
+  const baseCriteria = ['Clarity of communication', 'Relevance to role'];
+  
+  if (category === 'behavioral') {
+    return [...baseCriteria, 'Specific examples provided', 'Leadership and problem-solving skills', 'Self-awareness and growth mindset'];
+  }
+  
+  if (category === 'technical') {
+    return [...baseCriteria, 'Technical accuracy', 'Problem-solving approach', 'Code quality and best practices', 'System thinking'];
+  }
+  
+  if (category === 'company_specific') {
+    const culturalFit = companyInsights?.values?.length > 0 ? 'Alignment with company values' : 'Cultural fit assessment';
+    return [...baseCriteria, 'Company knowledge', culturalFit, 'Genuine interest in role'];
+  }
+  
+  if (category === 'situational') {
+    return [...baseCriteria, 'Critical thinking', 'Decision-making process', 'Consideration of stakeholders'];
+  }
+  
+  return [...baseCriteria, 'Confidence', 'Professional experience'];
+}
+
+function isStarStoryFit(question: string): boolean {
+  const questionLower = question.toLowerCase();
+  const starIndicators = [
+    'tell me about', 'describe a time', 'give me an example', 'walk me through',
+    'when have you', 'how did you handle', 'share an experience'
+  ];
+  
+  return starIndicators.some(indicator => questionLower.includes(indicator));
+}
+
+function generateCompanyContext(question: string, company: string, role: string, companyInsights: any): string {
+  const category = categorizeQuestion(question, '');
+  
+  if (category === 'company_specific' && companyInsights?.culture) {
+    return `This question assesses fit with ${company}'s culture: ${companyInsights.culture}`;
+  }
+  
+  if (category === 'technical' && role) {
+    return `Technical question relevant to ${role} position at ${company}`;
+  }
+  
+  if (category === 'behavioral') {
+    const values = companyInsights?.values?.length > 0 ? 
+      ` Values they look for: ${companyInsights.values.slice(0, 3).join(', ')}` : '';
+    return `Behavioral question for ${company} interview.${values}`;
+  }
+  
+  return `Standard interview question for ${role || 'this position'} at ${company}`;
+}
+
+function calculateConfidenceScore(question: any, companyInsights: any, category: string): number {
+  let score = 0.6; // Base score
+  
+  // Higher confidence for questions with research backing
+  if (question.rationale && question.rationale.length > 50) {
+    score += 0.2;
+  }
+  
+  // Company-specific questions with insights get higher score
+  if (category === 'company_specific' && companyInsights?.interview_questions_bank) {
+    score += 0.15;
+  }
+  
+  // Technical questions from comprehensive analysis
+  if (category === 'technical' && question.suggested_answer_approach) {
+    score += 0.1;
+  }
+  
+  return Math.min(0.95, score);
+}
+
+function calculateStageQuestionConfidence(question: string, companyInsights: any, stageName: string): number {
+  let score = 0.6; // Base score for stage questions
+  
+  // Higher confidence if we have company insights
+  if (companyInsights?.interview_stages?.length > 0) {
+    score += 0.15;
+  }
+  
+  // Standard questions get reasonable confidence
+  const questionLower = question.toLowerCase();
+  if (questionLower.includes('tell me about yourself') || questionLower.includes('why this company')) {
+    score += 0.1;
+  }
+  
+  return Math.min(0.85, score);
+}
+
 serve(async (req) => {
   // Handle CORS preflight request
   if (req.method === "OPTIONS") {
@@ -586,21 +783,71 @@ serve(async (req) => {
 
   try {
     const { company, role, country, roleLinks, cv, userId, searchId } = await req.json() as SynthesisRequest;
+    
+    // Initialize progress tracker for real-time updates
+    const tracker = new ProgressTracker(searchId);
+    await tracker.updateStep('INITIALIZING');
+    
+    // Start background processing (fire-and-forget pattern)
+    processResearchAsync(company, role, country, roleLinks, cv, userId, searchId, tracker)
+      .catch(async (error) => {
+        console.error('Background processing failed:', error);
+        await tracker.markFailed(error.message);
+      });
+    
+    // Return immediate response (202 Accepted)
+    return new Response(
+      JSON.stringify({
+        searchId,
+        status: 'processing',
+        message: 'Research started successfully',
+        estimatedTime: '20-30 seconds'
+      }),
+      {
+        status: 202,
+        headers: { ...corsHeaders, "Content-Type": "application/json" },
+      }
+    );
+  } catch (error) {
+    console.error('Error starting research:', error);
+    return new Response(
+      JSON.stringify({ error: error.message }),
+      {
+        status: 400,
+        headers: { ...corsHeaders, "Content-Type": "application/json" },
+      }
+    );
+  }
+});
 
+/**
+ * Background processing function for async job execution
+ * Implements concurrent processing pattern for optimal performance
+ */
+async function processResearchAsync(
+  company: string,
+  role: string | undefined,
+  country: string | undefined,
+  roleLinks: string[] | undefined,
+  cv: string | undefined,
+  userId: string,
+  searchId: string,
+  tracker: ProgressTracker
+) {
+  try {
     // Initialize logger
     const logger = new SearchLogger(searchId, 'interview-research', userId);
     logger.log('REQUEST_INPUT', 'VALIDATION', { company, role, country, roleLinks: roleLinks?.length, hasCv: !!cv, userId });
 
     // Create Supabase client
-    const supabaseUrl = Deno.env.get("SUPABASE_URL")!;
-    const supabaseServiceKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
+    const supabaseUrl = Deno.env.get("SUPABASE_URL");
+    const supabaseServiceKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY");
+    
+    if (!supabaseUrl || !supabaseServiceKey) {
+      throw new Error("Missing Supabase configuration");
+    }
+    
     const supabase = createClient(supabaseUrl, supabaseServiceKey);
-
-    // Update search status to processing
-    await supabase
-      .from("searches")
-      .update({ search_status: "processing" })
-      .eq("id", searchId);
 
     // Get OpenAI API key
     const openaiApiKey = Deno.env.get("OPENAI_API_KEY");
@@ -608,51 +855,77 @@ serve(async (req) => {
       throw new Error("Missing OpenAI API key");
     }
 
-    console.log("Starting interview synthesis for", company, role || "");
-
-    // Step 1: Start company research immediately (most time-consuming)
-    logger.log('STEP_START', 'DATA_GATHERING', { step: 1, description: 'Starting company research' });
-    console.log("Starting company research...");
+    console.log("Starting concurrent research for", company, role || "");
+    logger.log('STEP_START', 'CONCURRENT_PROCESSING', { step: 1, description: 'Starting concurrent data gathering' });
     
-    // Update search progress (Aston AI inspired real-time updates)
-    await supabase
-      .from("searches")
-      .update({ 
-        search_status: "processing",
-        progress_message: "Researching company insights and interview processes..." 
-      })
-      .eq("id", searchId);
-    
-    const companyDataPromise = gatherCompanyData(company, role, country, searchId);
-    
-    // Step 2: Run ALL operations concurrently (Aston AI pattern)
+    // Step 1: Execute all research operations concurrently with timeout protection
     const [companyInsights, jobRequirements, cvAnalysis] = await Promise.all([
-      companyDataPromise,
-      gatherJobData(roleLinks || [], searchId, company, role), 
-      gatherCVData(cv || "", userId)
+      tracker.withProgress(
+        () => executeWithTimeout(
+          () => gatherCompanyData(company, role, country, searchId),
+          CONCURRENT_TIMEOUTS.companyResearch,
+          'Company Research',
+          tracker
+        ),
+        'COMPANY_RESEARCH_START',
+        'COMPANY_RESEARCH_COMPLETE',
+        'Company research timed out'
+      ),
+      tracker.withProgress(
+        () => executeWithTimeout(
+          () => gatherJobData(roleLinks || [], searchId, company, role),
+          CONCURRENT_TIMEOUTS.jobAnalysis,
+          'Job Analysis',
+          tracker
+        ),
+        'JOB_ANALYSIS_START',
+        'JOB_ANALYSIS_COMPLETE',
+        'Job analysis timed out'
+      ),
+      tracker.withProgress(
+        () => executeWithTimeout(
+          () => gatherCVData(cv || "", userId),
+          CONCURRENT_TIMEOUTS.cvAnalysis,
+          'CV Analysis',
+          tracker
+        ),
+        'CV_ANALYSIS_START',
+        'CV_ANALYSIS_COMPLETE',
+        'CV analysis timed out'
+      )
     ]);
     
-    logger.log('DATA_GATHERING_COMPLETE', 'MICROSERVICES', { 
+    logger.log('DATA_GATHERING_COMPLETE', 'CONCURRENT_SUCCESS', { 
       companyInsightsFound: !!companyInsights,
-      jobRequirementsFound: !!jobRequirements,
+      jobRequirements: !!jobRequirements,
       cvAnalysisFound: !!cvAnalysis,
       companyInterviewStages: companyInsights?.interview_stages?.length || 0
     });
 
-    // Step 4: Conduct AI synthesis (must have company data to proceed effectively)
-    console.log("Conducting AI synthesis...");
-    const synthesisResult = await conductInterviewSynthesis(
-      company, 
-      role, 
-      country, 
-      companyInsights,
-      jobRequirements,
-      cvAnalysis,
-      openaiApiKey
+    // Step 2: Generate questions and conduct synthesis
+    await tracker.updateStep('QUESTION_GENERATION_START');
+    
+    const synthesisResult = await executeWithTimeout(
+      () => conductInterviewSynthesis(
+        company, 
+        role, 
+        country, 
+        companyInsights,
+        jobRequirements,
+        cvAnalysis,
+        openaiApiKey
+      ),
+      CONCURRENT_TIMEOUTS.questionGeneration,
+      'AI Synthesis',
+      tracker
     );
 
-    // Step 5: Run comparison and question generation in parallel (optional enhancements)
+    await tracker.updateStep('QUESTION_GENERATION_COMPLETE');
+
+    // Step 3: Run comparison and question generation in parallel (optional enhancements)
     console.log("Generating enhanced analysis...");
+    await tracker.updateStep('FINALIZING');
+    
     const [cvJobComparison, enhancedQuestions] = await Promise.all([
       generateCVJobComparison(
         searchId,
@@ -673,6 +946,16 @@ serve(async (req) => {
 
     console.log("Storing final results...");
 
+    // CHECKPOINT 1: Save interview stages immediately after synthesis
+    console.log("💾 CHECKPOINT: Saving interview stages...");
+    await supabase
+      .from("searches")
+      .update({ 
+        search_status: "processing",
+        progress_message: "Saving interview stages and basic questions..." 
+      })
+      .eq("id", searchId);
+
     // Step 5: Store interview stages and questions in database
     for (const stage of synthesisResult.interview_stages) {
       // Insert stage
@@ -692,21 +975,21 @@ serve(async (req) => {
       
       if (stageError) throw stageError;
       
-      // Insert enhanced questions for this stage
+      // Insert enhanced questions for this stage with dynamic categorization
       const questionsToInsert = stage.common_questions.map((question, index) => ({
         stage_id: stageData.id,
         search_id: searchId,
         question,
-        category: 'general', // Basic questions are categorized as general
+        category: categorizeQuestion(question, stage.name),
         question_type: 'common',
-        difficulty: 'Medium',
-        rationale: `Common question for ${stage.name} stage based on interview research`,
-        suggested_answer_approach: 'Use STAR method if describing experience, otherwise provide clear, structured response',
-        evaluation_criteria: ['Clarity of communication', 'Relevance to role', 'Confidence'],
+        difficulty: determineDifficultyFromContext(question, jobRequirements, cvAnalysis, stage.name),
+        rationale: `${categorizeQuestion(question, stage.name)} question for ${stage.name} based on company research and industry standards`,
+        suggested_answer_approach: generateAnswerApproach(question, categorizeQuestion(question, stage.name)),
+        evaluation_criteria: generateEvaluationCriteria(categorizeQuestion(question, stage.name), companyInsights, jobRequirements),
         follow_up_questions: [],
-        star_story_fit: question.toLowerCase().includes('tell me about') || question.toLowerCase().includes('describe'),
-        company_context: `This is a standard question for ${stage.name} at ${company}`,
-        confidence_score: 0.7 // Standard questions have good confidence
+        star_story_fit: isStarStoryFit(question),
+        company_context: generateCompanyContext(question, company, role, companyInsights),
+        confidence_score: calculateStageQuestionConfidence(question, companyInsights, stage.name)
       }));
       
       const { error: questionsError } = await supabase
@@ -715,6 +998,16 @@ serve(async (req) => {
       
       if (questionsError) throw questionsError;
     }
+
+    // CHECKPOINT 2: Save CV analysis immediately
+    console.log("💾 CHECKPOINT: Saving CV analysis...");
+    await supabase
+      .from("searches")
+      .update({ 
+        search_status: "processing",
+        progress_message: "Saving CV analysis and job matching..." 
+      })
+      .eq("id", searchId);
 
     // Step 6: Save CV analysis if provided
     if (cv && cvAnalysis) {
@@ -764,6 +1057,16 @@ serve(async (req) => {
       console.log("Skipping CV save - cv:", !!cv, "cvAnalysis:", !!cvAnalysis);
     }
 
+    // CHECKPOINT 3: Save enhanced analysis
+    console.log("💾 CHECKPOINT: Saving enhanced analysis and comparisons...");
+    await supabase
+      .from("searches")
+      .update({ 
+        search_status: "processing",
+        progress_message: "Finalizing analysis and enhanced questions..." 
+      })
+      .eq("id", searchId);
+
     // Step 7: Store enhanced question bank and comparison data
     if (cvJobComparison) {
       try {
@@ -806,7 +1109,7 @@ serve(async (req) => {
           // Prepare all questions for batch insert
           const questionsToInsert = [];
           
-          // Helper function to add questions from a category
+          // Helper function to add questions from a category with dynamic values
           const addQuestionsFromCategory = (questions: any[], category: string) => {
             questions.forEach((q: any) => {
               questionsToInsert.push({
@@ -815,14 +1118,14 @@ serve(async (req) => {
                 question: q.question,
                 category: category,
                 question_type: q.type || category,
-                difficulty: q.difficulty || 'Medium',
-                rationale: q.rationale,
-                suggested_answer_approach: q.suggested_answer_approach,
-                evaluation_criteria: q.evaluation_criteria || [],
+                difficulty: determineDifficulty(q, jobRequirements, cvAnalysis),
+                rationale: q.rationale || `${category} question for ${stage.name} stage`,
+                suggested_answer_approach: q.suggested_answer_approach || generateAnswerApproach(q.question, category),
+                evaluation_criteria: q.evaluation_criteria || generateEvaluationCriteria(category, companyInsights, jobRequirements),
                 follow_up_questions: q.follow_up_questions || [],
-                star_story_fit: q.star_story_fit || false,
-                company_context: q.company_context,
-                confidence_score: 0.8 // Default confidence for AI-generated questions
+                star_story_fit: q.star_story_fit || isStarStoryFit(q.question),
+                company_context: q.company_context || `${category} question for ${company} ${role || ''} interview`,
+                confidence_score: calculateConfidenceScore(q, companyInsights, category)
               });
             });
           };
@@ -883,66 +1186,20 @@ serve(async (req) => {
       console.warn("Failed to update search status:", updateError);
     }
 
-    console.log("Interview synthesis completed successfully");
-
-    const responseData = { 
-      status: "success", 
-      message: "Interview synthesis completed",
-      insights: {
-        company_data_found: !!companyInsights,
-        job_data_found: !!jobRequirements,
-        cv_analyzed: !!cvAnalysis,
-        stages_created: synthesisResult.interview_stages.length,
-        personalized_guidance: synthesisResult.personalized_guidance,
-        cv_job_comparison: cvJobComparison,
-        enhanced_questions: enhancedQuestions,
-        preparation_priorities: cvJobComparison?.preparation_priorities || [],
-        overall_fit_score: cvJobComparison?.overall_fit_score || 0
-      }
-    };
-
-    logger.logFunctionEnd(true, responseData);
+    // Mark research as completed
+    await tracker.markCompleted('Research completed successfully!');
     
-    // Temporarily disable file logging to avoid any issues
-    // await logger.saveToFile();
-
-    return new Response(
-      JSON.stringify(responseData),
-      {
-        headers: { ...corsHeaders, "Content-Type": "application/json" },
-        status: 200,
-      }
-    );
+    logger.log('RESEARCH_COMPLETE', 'SUCCESS', { 
+      totalQuestions: enhancedQuestions?.length || 0,
+      processingTimeMs: Date.now() - (new Date().getTime())
+    });
+    
+    console.log('✅ Research completed successfully for', company);
 
   } catch (error) {
-    console.error("Error processing interview synthesis:", error);
-
-    // Update search status to failed
-    try {
-      const supabaseUrl = Deno.env.get("SUPABASE_URL")!;
-      const supabaseServiceKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
-      const supabase = createClient(supabaseUrl, supabaseServiceKey);
-      
-      const { searchId } = await req.json();
-      if (searchId) {
-        await supabase
-          .from("searches")
-          .update({ search_status: "failed" })
-          .eq("id", searchId);
-      }
-    } catch (updateError) {
-      console.error("Failed to update search status:", updateError);
-    }
-
-    return new Response(
-      JSON.stringify({ 
-        status: "error", 
-        message: error.message || "Failed to process interview synthesis"
-      }),
-      {
-        headers: { ...corsHeaders, "Content-Type": "application/json" },
-        status: 500,
-      }
-    );
+    console.error('❌ Research processing failed:', error);
+    await tracker.markFailed(error.message);
+    throw error;
   }
-});
+}
+

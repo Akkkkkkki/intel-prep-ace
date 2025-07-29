@@ -74,9 +74,9 @@ async function searchCompanyInfo(
   supabase?: any,
   logger?: SearchLogger
 ): Promise<any> {
-  // Set a maximum execution time for the entire function (20 seconds)
+  // Set a maximum execution time for the entire function (15 seconds for concurrent execution)
   const functionTimeout = new Promise((_, reject) => 
-    setTimeout(() => reject(new Error('Company research function timeout')), 20000)
+    setTimeout(() => reject(new Error('Company research function timeout')), 15000)
   );
 
   const researchPromise = async () => {

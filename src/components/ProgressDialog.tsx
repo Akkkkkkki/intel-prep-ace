@@ -2,13 +2,14 @@ import { useState, useEffect } from "react";
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
 import { Progress } from "@/components/ui/progress";
-import { CheckCircle, Clock, Search, Brain, FileText, Users, Zap } from "lucide-react";
+import { CheckCircle, Clock, Search, Brain, FileText, Users, Zap, AlertCircle } from "lucide-react";
+import { useSearchProgress, useEstimatedCompletionTime, formatProgressStep, getProgressColor, getProgressIcon } from "@/hooks/useSearchProgress";
 
 interface ProgressDialogProps {
   isOpen: boolean;
   onClose: () => void;
   onViewResults: () => void;
-  searchStatus: 'pending' | 'processing' | 'completed' | 'failed';
+  searchId: string | null;
   company: string;
   role?: string;
 }
@@ -17,77 +18,74 @@ const ProgressDialog = ({
   isOpen, 
   onClose, 
   onViewResults, 
-  searchStatus, 
+  searchId,
   company, 
   role 
 }: ProgressDialogProps) => {
-  const [currentStep, setCurrentStep] = useState(0);
-  const [progressValue, setProgressValue] = useState(0);
+  // Use real-time progress data
+  const { data: search, error } = useSearchProgress(searchId, { enabled: isOpen && !!searchId });
+  const timeEstimate = useEstimatedCompletionTime(searchId);
+  
+  // Fallback state for when there's no search data yet
+  const [fallbackStep, setFallbackStep] = useState(0);
+  
+  // Get actual progress data or use fallbacks
+  const searchStatus = search?.status || 'pending';
+  const progressValue = search?.progress_percentage || 0;
+  const currentStepText = search?.progress_step || 'Initializing research...';
+  const errorMessage = search?.error_message;
 
   const steps = [
-    { icon: Search, label: "Gathering company intel", description: "Searching Glassdoor, Reddit, LinkedIn..." },
-    { icon: FileText, label: "Analyzing job requirements", description: "Extracting role requirements and skills..." },
-    { icon: Brain, label: "Processing with AI", description: "Generating personalized insights..." },
-    { icon: Users, label: "Creating interview stages", description: "Building your interview roadmap..." },
-    { icon: Zap, label: "Finalizing preparation", description: "Compiling questions and guidance..." }
+    { icon: Search, label: "Company Research", description: "Gathering intel from multiple sources..." },
+    { icon: FileText, label: "Job Analysis", description: "Processing role requirements..." },
+    { icon: Brain, label: "CV Analysis", description: "Evaluating your background..." },
+    { icon: Users, label: "Question Generation", description: "Creating personalized questions..." },
+    { icon: Zap, label: "Finalizing", description: "Preparing your results..." }
   ];
+  
+  // Map progress step to icon
+  const getStepIcon = (stepText: string) => {
+    if (stepText.toLowerCase().includes('company') || stepText.toLowerCase().includes('research')) {
+      return Search;
+    } else if (stepText.toLowerCase().includes('job') || stepText.toLowerCase().includes('analysis')) {
+      return FileText;
+    } else if (stepText.toLowerCase().includes('cv') || stepText.toLowerCase().includes('resume')) {
+      return Brain;
+    } else if (stepText.toLowerCase().includes('question') || stepText.toLowerCase().includes('generating')) {
+      return Users;
+    } else if (stepText.toLowerCase().includes('finalizing') || stepText.toLowerCase().includes('completing')) {
+      return Zap;
+    }
+    return Search; // default
+  };
 
+  // Fallback animation for when we don't have real progress data
   useEffect(() => {
-    if (!isOpen) return;
+    if (!isOpen || search) return; // Only run if we don't have real data
 
-    let interval: NodeJS.Timeout;
-    
-    // Immediately set to complete if status is already completed
-    if (searchStatus === 'completed') {
-      setCurrentStep(steps.length - 1);
-      setProgressValue(100);
-      return;
-    }
-    
-    if (searchStatus === 'pending' || searchStatus === 'processing') {
-      interval = setInterval(() => {
-        setCurrentStep(prev => {
-          const nextStep = (prev + 1) % steps.length;
-          return nextStep;
-        });
-        
-        setProgressValue(prev => {
-          // Allow progress to reach 98% during processing, completion will set to 100%
-          if (prev >= 98) return Math.min(98, prev + 0.2); // Very slow increment near completion
-          if (prev >= 85) return prev + Math.random() * 1.5 + 0.5; // Slower increment 85-98%
-          if (prev >= 70) return prev + Math.random() * 2.5 + 1; // Medium increment 70-85%
-          return prev + Math.random() * 4 + 3; // Faster increment 0-70%
-        });
-      }, 1500); // Faster updates for better perceived performance
-    } else if (searchStatus === 'failed') {
-      // Don't change progress when failed
-    }
+    const interval = setInterval(() => {
+      setFallbackStep(prev => (prev + 1) % steps.length);
+    }, 2000);
 
-    return () => {
-      if (interval) clearInterval(interval);
-    };
-  }, [isOpen, searchStatus, steps.length]);
-
-  // Separate effect to handle completion immediately when status changes
-  useEffect(() => {
-    if (searchStatus === 'completed') {
-      setCurrentStep(steps.length - 1);
-      setProgressValue(100);
-    }
-  }, [searchStatus, steps.length]);
+    return () => clearInterval(interval);
+  }, [isOpen, search, steps.length]);
 
   const getStatusMessage = () => {
+    if (error) {
+      return "Connection error. Retrying...";
+    }
+    
     switch (searchStatus) {
       case 'pending':
         return "Starting your research...";
       case 'processing':
-        return "AI is working on your research...";
+        return formatProgressStep(currentStepText);
       case 'completed':
         return "Research complete!";
       case 'failed':
-        return "Research failed. Please try again.";
+        return `Research failed: ${errorMessage || 'Unknown error'}`;
       default:
-        return "Processing...";
+        return "Initializing...";
     }
   };
 
@@ -95,15 +93,24 @@ const ProgressDialog = ({
     if (searchStatus === 'completed') return "Done!";
     if (searchStatus === 'failed') return "Process failed";
     
-    // More realistic time estimates based on actual processing
-    if (progressValue < 25) return "~2-3 min remaining";
-    if (progressValue < 50) return "~1-2 min remaining";
-    if (progressValue < 80) return "~1 min remaining";
-    if (progressValue < 95) return "~30 sec remaining";
+    // Use real-time estimate if available
+    if (timeEstimate) {
+      const { remainingSeconds, elapsedSeconds } = timeEstimate;
+      if (remainingSeconds <= 5) return "Almost done...";
+      if (remainingSeconds <= 15) return `~${remainingSeconds}s remaining`;
+      if (remainingSeconds <= 60) return `~${remainingSeconds}s remaining`;
+      return `~${Math.ceil(remainingSeconds / 60)}min remaining`;
+    }
+    
+    // Fallback estimates based on progress
+    if (progressValue < 25) return "~20-30s remaining";
+    if (progressValue < 50) return "~15-20s remaining";
+    if (progressValue < 80) return "~10-15s remaining";
+    if (progressValue < 95) return "~5-10s remaining";
     return "Almost done...";
   };
 
-  const CurrentIcon = steps[currentStep]?.icon || Search;
+  const CurrentIcon = search ? getStepIcon(currentStepText) : steps[fallbackStep]?.icon || Search;
 
   return (
     <Dialog open={isOpen} onOpenChange={onClose}>
@@ -128,14 +135,18 @@ const ProgressDialog = ({
                   ? 'bg-green-50 border-green-200' 
                   : searchStatus === 'failed'
                   ? 'bg-red-50 border-red-200'
+                  : error
+                  ? 'bg-yellow-50 border-yellow-200'
                   : 'bg-blue-50 border-blue-200 animate-pulse'
               }`}>
                 {searchStatus === 'completed' ? (
                   <CheckCircle className="h-8 w-8 text-green-600" />
+                ) : searchStatus === 'failed' ? (
+                  <AlertCircle className="h-8 w-8 text-red-600" />
+                ) : error ? (
+                  <Clock className="h-8 w-8 text-yellow-600 animate-spin" />
                 ) : (
-                  <CurrentIcon className={`h-8 w-8 ${
-                    searchStatus === 'failed' ? 'text-red-600' : 'text-blue-600'
-                  }`} />
+                  <CurrentIcon className="h-8 w-8 text-blue-600" />
                 )}
               </div>
             </div>
@@ -160,10 +171,15 @@ const ProgressDialog = ({
             <div className="bg-muted rounded-lg p-3">
               <div className="flex items-center gap-2 mb-1">
                 <CurrentIcon className="h-4 w-4 text-primary" />
-                <span className="font-medium text-sm">{steps[currentStep]?.label}</span>
+                <span className="font-medium text-sm">
+                  {search ? formatProgressStep(currentStepText) : steps[fallbackStep]?.label}
+                </span>
               </div>
               <p className="text-xs text-muted-foreground pl-6">
-                {steps[currentStep]?.description}
+                {search 
+                  ? `Processing your ${company} interview preparation...`
+                  : steps[fallbackStep]?.description
+                }
               </p>
             </div>
           )}
@@ -204,9 +220,16 @@ const ProgressDialog = ({
 
           {/* Info Note */}
           <div className="text-xs text-muted-foreground text-center bg-muted/50 rounded p-2">
-            💡 This process typically takes 2-4 minutes. You can close this dialog and check back later 
-            or watch the progress in real-time.
+            💡 This process typically takes 20-30 seconds with our new concurrent processing. 
+            You can close this dialog and check back later or watch the progress in real-time.
           </div>
+          
+          {/* Error Message */}
+          {error && (
+            <div className="text-xs text-red-600 text-center bg-red-50 rounded p-2 border border-red-200">
+              Connection issue detected. Retrying automatically...
+            </div>
+          )}
         </div>
       </DialogContent>
     </Dialog>

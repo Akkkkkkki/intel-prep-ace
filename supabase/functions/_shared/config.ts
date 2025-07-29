@@ -185,12 +185,12 @@ export const RESEARCH_CONFIG = {
     },
   },
 
-  // Performance and Reliability Configuration
+  // Performance and Reliability Configuration (Optimized for Concurrent Execution)
   performance: {
     timeouts: {
-      tavilySearch: 30000,    // 30 seconds per search
-      tavilyExtract: 45000,   // 45 seconds for extraction
-      openaiCall: 60000,      // 60 seconds for AI analysis
+      tavilySearch: 15000,    // 30s → 15s (concurrent execution)
+      tavilyExtract: 20000,   // 45s → 20s (concurrent execution)
+      openaiCall: 25000,      // 60s → 25s (concurrent execution)
     },
     
     retries: {

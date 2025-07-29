@@ -362,7 +362,7 @@ const Home = () => {
         isOpen={showProgressDialog}
         onClose={handleCloseProgressDialog}
         onViewResults={handleViewResults}
-        searchStatus={searchStatus}
+        searchId={currentSearchId}
         company={formData.company}
         role={formData.role}
       />
