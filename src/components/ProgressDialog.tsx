@@ -214,7 +214,7 @@ const ProgressDialog = ({
                   disabled={searchStatus === 'pending'}
                 >
                   <Clock className="h-4 w-4 mr-1" />
-                  {searchStatus === 'completed' ? 'View Results' : 'View Partial Results'}
+                  View Partial Results
                 </Button>
               </>
             )}
