@@ -31,7 +31,7 @@ async function fetchSearchProgress(searchId: string): Promise<SearchProgress | n
     .from('searches')
     .select(`
       id,
-      status,
+      search_status,
       progress_step,
       progress_percentage,
       error_message,
@@ -48,7 +48,19 @@ async function fetchSearchProgress(searchId: string): Promise<SearchProgress | n
     throw error;
   }
 
-  return data;
+  if (!data) return null;
+  // Map DB row to SearchProgress interface
+  return {
+    id: (data as any).id,
+    status: ((data as any).search_status || 'pending') as SearchProgress['status'],
+    progress_step: (data as any).progress_step || '',
+    progress_percentage: (data as any).progress_percentage || 0,
+    error_message: (data as any).error_message || undefined,
+    started_at: (data as any).started_at || undefined,
+    completed_at: (data as any).completed_at || undefined,
+    created_at: (data as any).created_at,
+    updated_at: (data as any).updated_at,
+  };
 }
 
 /**
@@ -79,9 +91,10 @@ export function useSearchProgress(
     enabled: enabled && !!searchId,
     
     // Polling configuration
-    refetchInterval: (data) => {
+    refetchInterval: (query) => {
+      const current = query.state.data as SearchProgress | undefined;
       // Stop polling when search is completed or failed
-      if (!data || data.status === 'completed' || data.status === 'failed') {
+      if (!current || current.status === 'completed' || current.status === 'failed') {
         return false;
       }
       return pollInterval;
@@ -98,20 +111,6 @@ export function useSearchProgress(
     // Background refetch settings
     refetchOnWindowFocus: true,
     refetchOnReconnect: true,
-    
-    // Error handling
-    onError: (error) => {
-      console.error('Search progress polling error:', error);
-    },
-    
-    // Success callback
-    onSuccess: (data) => {
-      if (data?.status === 'completed') {
-        console.log('✅ Search completed successfully');
-      } else if (data?.status === 'failed') {
-        console.error('❌ Search failed:', data.error_message);
-      }
-    }
   });
 
   // Realtime subscription to progress updates for this search row
