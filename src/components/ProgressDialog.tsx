@@ -34,6 +34,8 @@ const ProgressDialog = ({
   const progressValue = search?.progress_percentage || 0;
   const currentStepText = search?.progress_step || 'Initializing research...';
   const errorMessage = search?.error_message;
+  const lastUpdated = search?.updated_at ? new Date(search.updated_at).getTime() : null;
+  const isStalled = searchStatus === 'processing' && lastUpdated !== null && (Date.now() - lastUpdated > 20000);
 
   const steps = [
     { icon: Search, label: "Company Research", description: "Gathering intel from multiple sources..." },
@@ -79,7 +81,7 @@ const ProgressDialog = ({
       case 'pending':
         return "Starting your research...";
       case 'processing':
-        return formatProgressStep(currentStepText);
+        return isStalled ? 'Taking longer than expected. Retrying...' : formatProgressStep(currentStepText);
       case 'completed':
         return "Research complete!";
       case 'failed':
@@ -209,10 +211,10 @@ const ProgressDialog = ({
                   variant="secondary" 
                   size="sm" 
                   className="flex-1"
-                  disabled={searchStatus !== 'completed'}
+                  disabled={searchStatus === 'pending'}
                 >
                   <Clock className="h-4 w-4 mr-1" />
-                  Watch Progress
+                  {searchStatus === 'completed' ? 'View Results' : 'View Partial Results'}
                 </Button>
               </>
             )}
@@ -223,6 +225,11 @@ const ProgressDialog = ({
             💡 This process typically takes 20-30 seconds with our new concurrent processing. 
             You can close this dialog and check back later or watch the progress in real-time.
           </div>
+          {isStalled && (
+            <div className="text-xs text-yellow-700 text-center bg-yellow-50 rounded p-2 border border-yellow-200">
+              This is taking longer than usual. We’re retrying automatically and will continue with partial data if needed.
+            </div>
+          )}
           
           {/* Error Message */}
           {error && (

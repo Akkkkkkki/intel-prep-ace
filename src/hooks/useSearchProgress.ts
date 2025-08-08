@@ -3,7 +3,8 @@
  * Supports async job processing with automatic status updates
  */
 
-import { useQuery } from '@tanstack/react-query';
+import { useEffect } from 'react';
+import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
 
 export interface SearchProgress {
@@ -70,8 +71,9 @@ export function useSearchProgress(
     pollInterval = 2000, // Poll every 2 seconds
     retryOnFailure = true
   } = options;
+  const queryClient = useQueryClient();
 
-  return useQuery({
+  const query = useQuery({
     queryKey: ['search-progress', searchId],
     queryFn: () => fetchSearchProgress(searchId!),
     enabled: enabled && !!searchId,
@@ -111,6 +113,30 @@ export function useSearchProgress(
       }
     }
   });
+
+  // Realtime subscription to progress updates for this search row
+  useEffect(() => {
+    if (!searchId) return;
+    const channel = supabase
+      .channel(`searches-progress-${searchId}`)
+      .on(
+        'postgres_changes',
+        { event: '*', schema: 'public', table: 'searches', filter: `id=eq.${searchId}` },
+        (payload) => {
+          const row: any = (payload as any).new ?? (payload as any).record;
+          if (row) {
+            queryClient.setQueryData(['search-progress', searchId], row);
+          }
+        }
+      )
+      .subscribe();
+
+    return () => {
+      supabase.removeChannel(channel);
+    };
+  }, [searchId, queryClient]);
+
+  return query;
 }
 
 /**

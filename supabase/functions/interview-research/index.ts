@@ -2,7 +2,7 @@ import { serve } from "https://deno.land/std@0.177.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.43.2";
 import { SearchLogger } from "../_shared/logger.ts";
 import { RESEARCH_CONFIG } from "../_shared/config.ts";
-import { ProgressTracker, PROGRESS_STEPS, CONCURRENT_TIMEOUTS, executeWithTimeout } from "../_shared/progress-tracker.ts";
+import { ProgressTracker, PROGRESS_STEPS, CONCURRENT_TIMEOUTS, executeWithTimeout, executeWithTimeoutSafe } from "../_shared/progress-tracker.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -858,42 +858,40 @@ async function processResearchAsync(
     console.log("Starting concurrent research for", company, role || "");
     logger.log('STEP_START', 'CONCURRENT_PROCESSING', { step: 1, description: 'Starting concurrent data gathering' });
     
-    // Step 1: Execute all research operations concurrently with timeout protection
-    const [companyInsights, jobRequirements, cvAnalysis] = await Promise.all([
-      tracker.withProgress(
-        () => executeWithTimeout(
-          () => gatherCompanyData(company, role, country, searchId),
-          CONCURRENT_TIMEOUTS.companyResearch,
-          'Company Research',
-          tracker
-        ),
-        'COMPANY_RESEARCH_START',
-        'COMPANY_RESEARCH_COMPLETE',
-        'Company research timed out'
-      ),
-      tracker.withProgress(
-        () => executeWithTimeout(
-          () => gatherJobData(roleLinks || [], searchId, company, role),
-          CONCURRENT_TIMEOUTS.jobAnalysis,
-          'Job Analysis',
-          tracker
-        ),
-        'JOB_ANALYSIS_START',
-        'JOB_ANALYSIS_COMPLETE',
-        'Job analysis timed out'
-      ),
-      tracker.withProgress(
-        () => executeWithTimeout(
-          () => gatherCVData(cv || "", userId),
-          CONCURRENT_TIMEOUTS.cvAnalysis,
-          'CV Analysis',
-          tracker
-        ),
-        'CV_ANALYSIS_START',
-        'CV_ANALYSIS_COMPLETE',
-        'CV analysis timed out'
-      )
+    // Step 1: Execute all research operations concurrently with soft-fail and partial progress handling
+    await tracker.updateStep('COMPANY_RESEARCH_START');
+    await tracker.updateStep('JOB_ANALYSIS_START');
+    await tracker.updateStep('CV_ANALYSIS_START');
+
+    const [companyRes, jobRes, cvRes] = await Promise.allSettled([
+      executeWithTimeoutSafe(() => gatherCompanyData(company, role, country, searchId), CONCURRENT_TIMEOUTS.companyResearch),
+      executeWithTimeoutSafe(() => gatherJobData(roleLinks || [], searchId, company, role), CONCURRENT_TIMEOUTS.jobAnalysis),
+      executeWithTimeoutSafe(() => gatherCVData(cv || "", userId), CONCURRENT_TIMEOUTS.cvAnalysis),
     ]);
+
+    let companyInsights: any = null;
+    if (companyRes.status === 'fulfilled' && companyRes.value.ok) {
+      companyInsights = companyRes.value.value;
+      await tracker.updateStep('COMPANY_RESEARCH_COMPLETE');
+    } else {
+      await tracker.updateStep('COMPANY_RESEARCH_PARTIAL', 'Company research timed out, continuing with available data');
+    }
+
+    let jobRequirements: any = null;
+    if (jobRes.status === 'fulfilled' && jobRes.value.ok) {
+      jobRequirements = jobRes.value.value;
+      await tracker.updateStep('JOB_ANALYSIS_COMPLETE');
+    } else {
+      await tracker.updateStep('JOB_ANALYSIS_PARTIAL', 'Job analysis timed out, continuing with available data');
+    }
+
+    let cvAnalysis: any = null;
+    if (cvRes.status === 'fulfilled' && cvRes.value.ok) {
+      cvAnalysis = cvRes.value.value;
+      await tracker.updateStep('CV_ANALYSIS_COMPLETE');
+    } else {
+      await tracker.updateStep('CV_ANALYSIS_PARTIAL', 'CV analysis timed out, continuing with available data');
+    }
     
     logger.log('DATA_GATHERING_COMPLETE', 'CONCURRENT_SUCCESS', { 
       companyInsightsFound: !!companyInsights,

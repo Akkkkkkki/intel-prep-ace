@@ -1841,6 +1841,34 @@ Phase 7 successfully resolved critical performance bottlenecks that were prevent
 
 This phase transforms the system from a prototype that frequently timed out to a production-ready application that consistently delivers results within acceptable timeframes.
 
+## 🚀 Phase 8: Soft-Fail Concurrency, Partial Results, and Realtime UX (Aug 2025) ✅
+
+### Summary
+- Converted orchestration to soft-fail concurrency so single timeouts don’t abort the run.
+- Added partial progress step keys and stalled detection UX.
+- Enabled realtime DB subscription for instant progress updates and early partial results viewing.
+
+### Backend Changes
+- `supabase/functions/_shared/progress-tracker.ts`
+  - Added `COMPANY_RESEARCH_PARTIAL`, `JOB_ANALYSIS_PARTIAL`, `CV_ANALYSIS_PARTIAL`, and `STALLED`.
+  - Introduced `executeWithTimeoutSafe()` for non-throwing timeouts.
+- `supabase/functions/interview-research/index.ts`
+  - Replaced fail-fast concurrency with `Promise.allSettled` + safe timeouts.
+  - Always proceed to synthesis with best-available inputs.
+
+### Frontend Changes
+- `src/hooks/useSearchProgress.ts`
+  - Added Postgres realtime subscription to the `searches` row with cache updates.
+  - Polling remains as fallback.
+- `src/components/ProgressDialog.tsx`
+  - Detects “stalled” when no update >20s and shows friendly status.
+  - Enables “View Partial Results” while processing.
+
+### Impact
+- Users are never left hanging; they can see clear status and partial data.
+- Timeouts of sub-agents no longer cause the entire run to fail.
+- Aligns with industry best practices for long-running async workflows.
+
 ## Phase 5: Database Consolidation (January 2025) ✅
 
 ### 5.1 Interview Questions Table Consolidation

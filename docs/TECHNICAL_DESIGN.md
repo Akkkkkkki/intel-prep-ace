@@ -2001,42 +2001,605 @@ plugins: [
 ].filter(Boolean)
 ```
 
-## 13. Testing Strategy
+## 13. Comprehensive Test Framework Implementation
 
-### 13.1 Testing Pyramid
+### 13.1 Test Framework Architecture Overview
 
-#### Unit Tests (Future Implementation)
+The INT Interview Prep Tool implements a comprehensive multi-layered testing strategy designed for the microservices architecture and async job processing patterns. The framework prioritizes testing the most critical and complex components: async job processing, real-time progress updates, and multi-service orchestration.
+
+```
+Testing Architecture:
+┌─────────────────┐    ┌──────────────────┐    ┌─────────────────┐
+│  Frontend Tests │    │ Edge Function    │    │ Database Tests  │
+│                 │    │ Tests            │    │                 │
+│ • Components    │    │ • Unit Tests     │    │ • RLS Policies  │
+│ • Hooks         │    │ • Integration    │    │ • Migrations    │
+│ • Services      │    │ • Mock APIs      │    │ • Performance   │
+│ • E2E Tests     │    │ • Timeouts       │    │ • Data Integrity│
+└─────────────────┘    └──────────────────┘    └─────────────────┘
+```
+
+### 13.2 Frontend Testing Strategy (React/TypeScript/Vite)
+
+#### Technology Stack
+- **Vitest** - Fast unit testing (Jest alternative with better Vite integration)
+- **React Testing Library** - Component testing with user-centric approach
+- **MSW (Mock Service Worker)** - API mocking for reliable tests
+- **Playwright** - End-to-end testing for critical user flows
+
+#### Test Directory Structure
+```
+src/
+├── __tests__/              # Unit tests for utilities
+├── components/__tests__/    # Component tests
+│   ├── ProgressDialog.test.tsx      # Critical async component
+│   ├── Navigation.test.tsx          # Search context management
+│   └── ui/__tests__/               # shadcn/ui component tests
+├── hooks/__tests__/        # Custom hooks tests
+│   ├── useSearchProgress.test.ts    # Polling logic, error handling
+│   ├── useAuth.test.ts             # Authentication flows
+│   └── use-toast.test.ts           # Notification system
+├── services/__tests__/     # Service layer tests
+│   └── searchService.test.ts       # API integration layer
+├── pages/__tests__/        # Page-level integration tests
+│   ├── Dashboard.test.tsx          # Search results and polling
+│   └── Practice.test.tsx           # Question navigation
+└── e2e/                    # End-to-end tests
+    ├── auth.spec.ts               # Authentication flow
+    ├── search-flow.spec.ts        # Complete search process
+    └── practice-mode.spec.ts      # Practice session management
+```
+
+#### Critical Test Areas
+
+**1. ProgressDialog Component (High Priority)**
+- Async state management with real-time updates
+- Polling behavior and automatic cleanup
+- Error states and retry mechanisms
+- Progress simulation and completion handling
+
+**2. useSearchProgress Hook (High Priority)**
+- Polling logic with configurable intervals
+- Error handling and retry strategies
+- Memory leak prevention
+- Status-based polling control
+
+**3. Authentication Flow**
+- Login/logout/signup functionality
+- Protected route navigation
+- Session persistence and refresh
+- Context state management
+
+**4. Search Flow Integration**
+- Company research initiation
+- Real-time progress tracking
+- Results display and navigation
+- Error recovery mechanisms
+
+**5. API Integration (searchService.ts)**
+- Supabase client integration
+- Error handling patterns
+- Response transformation
+- Timeout handling
+
+#### Sample Test Implementation
 ```typescript
-// Example test structure
-describe('searchService', () => {
-  it('should create search with valid params', async () => {
-    // Mock Supabase responses
-    // Test service methods
-    // Assert correct behavior
+// src/hooks/__tests__/useSearchProgress.test.ts
+describe('useSearchProgress', () => {
+  it('should poll search status and update progress', async () => {
+    // Mock searchService responses
+    const mockSearch = { status: 'processing', progress_percentage: 45 };
+    vi.mocked(searchService.getSearchResults).mockResolvedValue({
+      search: mockSearch,
+      success: true
+    });
+
+    const { result } = renderHook(() => useSearchProgress('search-123'));
+    
+    await waitFor(() => {
+      expect(result.current.data?.status).toBe('processing');
+      expect(result.current.data?.progress_percentage).toBe(45);
+    });
+  });
+
+  it('should stop polling when search completes', async () => {
+    const { result, rerender } = renderHook(() => useSearchProgress('search-123'));
+    
+    // Simulate completion
+    vi.mocked(searchService.getSearchResults).mockResolvedValue({
+      search: { status: 'completed', progress_percentage: 100 },
+      success: true
+    });
+
+    await waitFor(() => {
+      expect(result.current.data?.status).toBe('completed');
+    });
+
+    // Verify polling stops
+    expect(vi.mocked(searchService.getSearchResults)).toHaveBeenCalledTimes(1);
   });
 });
 ```
 
-#### Integration Tests (Future Implementation)
-- **User Flows:** Complete search → dashboard → practice flow
-- **Database Operations:** Test RLS policies and data integrity
-- **Edge Functions:** API contract testing with mock OpenAI
+### 13.3 Edge Functions Testing Strategy (Deno/Supabase)
 
-#### Manual Testing Checklist
-- **Authentication Flow:** Sign up, sign in, protected routes
-- **Search Creation:** Various input combinations
-- **AI Processing:** Error handling and timeout scenarios
-- **Practice Mode:** Question navigation and answer saving
-- **Responsive Design:** Mobile and desktop layouts
-- **Cross-browser:** Chrome, Firefox, Safari compatibility
+#### Technology Stack
+- **Deno Test** - Built-in testing framework for Edge Functions
+- **Supabase Test Helpers** - Database mocking and testing utilities
+- **Mock APIs** - OpenAI, Tavily response mocking
+- **Custom Test Utilities** - Shared mocks and fixtures
 
-### 13.2 Error Testing
+#### Test Directory Structure
+```
+supabase/functions/
+├── _shared/__tests__/
+│   ├── config.test.ts              # Configuration validation
+│   ├── progress-tracker.test.ts    # Real-time progress updates
+│   ├── url-deduplication.test.ts   # Caching and optimization
+│   ├── duckduckgo-fallback.test.ts # Multi-engine search fallbacks
+│   ├── logging.test.ts             # Comprehensive logging system
+│   └── tavily-client.test.ts       # API integration wrapper
+├── company-research/__tests__/
+│   ├── discovery.test.ts           # Search query execution
+│   ├── extraction.test.ts          # Deep content extraction
+│   └── analysis.test.ts            # AI synthesis
+├── interview-research/__tests__/
+│   ├── orchestration.test.ts       # Service coordination
+│   ├── concurrent-processing.test.ts # Parallel execution
+│   └── async-job-processing.test.ts # Fire-and-forget pattern
+├── cv-analysis/__tests__/
+│   └── parsing.test.ts             # CV analysis and extraction
+├── job-analysis/__tests__/
+│   └── requirements.test.ts        # Job posting analysis
+└── test-utils/
+    ├── mocks.ts                    # Shared mock implementations
+    ├── fixtures.ts                 # Test data and scenarios
+    └── helpers.ts                  # Common test utilities
+```
 
-#### Edge Cases
-- **Empty Responses:** AI returns malformed data
-- **Network Failures:** Offline scenarios
-- **Authentication Expiry:** Token refresh scenarios
-- **Rate Limiting:** OpenAI API limits
+#### Critical Test Areas
+
+**1. Async Job Processing (High Priority)**
+- Fire-and-forget pattern validation
+- Background processing without blocking responses
+- Progress tracking through database updates
+- Error handling in background processes
+
+**2. Concurrent Execution (High Priority)**
+- Promise.all timeout handling
+- Service failure resilience
+- Resource optimization under concurrent load
+- Memory leak prevention
+
+**3. Multi-Engine Search Fallbacks (High Priority)**
+- Tavily API failure scenarios
+- DuckDuckGo fallback activation
+- Quality assessment and scoring
+- Cost optimization through intelligent fallbacks
+
+**4. Progress Tracking System**
+- Real-time database updates
+- Status transition validation
+- Client-side polling integration
+- Error state management
+
+**5. API Integration Reliability**
+- OpenAI API timeout handling
+- Response parsing and validation
+- Rate limiting and retry logic
+- JSON mode enforcement
+
+#### Sample Test Implementation
+```typescript
+// supabase/functions/_shared/__tests__/progress-tracker.test.ts
+Deno.test("ProgressTracker should update database with real-time progress", async () => {
+  const mockSupabase = createMockSupabaseClient();
+  const tracker = new ProgressTracker("test-search-id");
+  
+  await tracker.updateStep('COMPANY_RESEARCH_START');
+  
+  // Verify database update
+  assert(mockSupabase.from.calledWith('searches'));
+  assert(mockSupabase.update.calledWith({
+    search_status: 'processing',
+    progress_step: 'COMPANY_RESEARCH_START',
+    progress_percentage: 25
+  }));
+});
+
+Deno.test("Concurrent processing should handle service timeouts gracefully", async () => {
+  const mockServices = {
+    companyResearch: () => new Promise((_, reject) => 
+      setTimeout(() => reject(new Error('Timeout')), 25000)
+    ),
+    jobAnalysis: () => Promise.resolve({ success: true }),
+    cvAnalysis: () => Promise.resolve({ success: true })
+  };
+
+  const results = await Promise.allSettled([
+    executeWithTimeout(mockServices.companyResearch, 20000, 'Company Research'),
+    executeWithTimeout(mockServices.jobAnalysis, 20000, 'Job Analysis'),
+    executeWithTimeout(mockServices.cvAnalysis, 20000, 'CV Analysis')
+  ]);
+
+  // Verify graceful handling of timeout
+  assert(results[0].status === 'rejected');
+  assert(results[1].status === 'fulfilled');
+  assert(results[2].status === 'fulfilled');
+});
+```
+
+### 13.4 Database Testing Strategy (PostgreSQL/Supabase)
+
+#### Testing Approach
+- **Isolated Test Database** - Separate from development and production
+- **Migration Testing** - Schema change validation and rollback testing
+- **RLS Policy Testing** - Row-Level Security validation
+- **Performance Testing** - Query optimization and index effectiveness
+
+#### Test Directory Structure
+```
+supabase/
+├── tests/
+│   ├── database/
+│   │   ├── migrations.test.sql     # Schema change validation
+│   │   ├── rls-policies.test.sql   # Security policy testing
+│   │   ├── indexes.test.sql        # Performance optimization
+│   │   └── constraints.test.sql    # Data integrity
+│   ├── performance/
+│   │   ├── query-optimization.test.sql # Query performance
+│   │   └── concurrent-access.test.sql  # Multi-user scenarios
+│   └── integration/
+│       ├── search-workflow.test.sql    # Complete search flow
+│       └── user-isolation.test.sql     # Data privacy validation
+└── fixtures/
+    ├── sample-data.sql             # Test data sets
+    ├── test-users.sql              # Authentication scenarios
+    └── edge-cases.sql              # Boundary condition testing
+```
+
+#### Critical Test Areas
+
+**1. Simplified RLS Policies (Performance-Optimized)**
+- User data isolation validation
+- Service role access verification
+- Cross-table authorization policies
+- Performance impact assessment
+
+**2. Consolidated Question Tables (Data Integrity)**
+- Foreign key constraint validation
+- Data consistency across operations
+- Question categorization accuracy
+- Metadata completeness
+
+**3. URL Deduplication System**
+- Unique constraint enforcement
+- Content quality scoring accuracy
+- Cache hit rate optimization
+- Storage efficiency validation
+
+**4. Search Status Tracking (Async Processing)**
+- Status transition validation
+- Progress percentage accuracy
+- Error message preservation
+- Completion time tracking
+
+#### Sample Test Implementation
+```sql
+-- supabase/tests/database/rls-policies.test.sql
+BEGIN;
+
+-- Test user data isolation
+SELECT plan(3);
+
+-- Create test users
+INSERT INTO auth.users (id, email) VALUES 
+  ('user1-uuid', 'user1@test.com'),
+  ('user2-uuid', 'user2@test.com');
+
+-- Set session for user1
+SELECT auth.set_session('user1-uuid');
+
+-- Create search for user1
+INSERT INTO searches (id, user_id, company) VALUES 
+  ('search1-uuid', 'user1-uuid', 'Test Company');
+
+-- User1 should see their own search
+SELECT is(
+  (SELECT COUNT(*)::int FROM searches WHERE company = 'Test Company'),
+  1,
+  'User can view their own searches'
+);
+
+-- Switch to user2
+SELECT auth.set_session('user2-uuid');
+
+-- User2 should not see user1's search
+SELECT is(
+  (SELECT COUNT(*)::int FROM searches WHERE company = 'Test Company'),
+  0,
+  'User cannot view other users searches'
+);
+
+-- Test service role access
+SELECT auth.set_session(NULL); -- Service role context
+
+-- Service role should access all data
+SELECT is(
+  (SELECT COUNT(*)::int FROM searches WHERE company = 'Test Company'),
+  1,
+  'Service role can access all searches'
+);
+
+SELECT * FROM finish();
+ROLLBACK;
+```
+
+### 13.5 Integration Testing Strategy
+
+#### Full-Stack Testing Approach
+- **API Contract Testing** - Frontend ↔ Edge Functions integration
+- **Search Flow Testing** - End-to-end research process validation
+- **Performance Testing** - 20-30s target completion verification
+- **Reliability Testing** - Multi-engine fallback validation
+
+#### Test Scenarios
+
+**1. Happy Path Testing**
+- Complete research flow with all services operational
+- Real-time progress updates throughout process
+- Successful data storage and retrieval
+- User interface responsiveness
+
+**2. Degraded Performance Testing**
+- Individual service failures with graceful fallbacks
+- Timeout handling and user communication
+- Partial data scenarios and user guidance
+- Multi-engine search fallback activation
+
+**3. Edge Case Testing**
+- Network connectivity issues
+- API rate limiting scenarios
+- Malformed AI responses
+- Database connection failures
+
+**4. Performance Testing**
+- Concurrent user load simulation
+- Response time validation (20-30s target)
+- Memory usage and cleanup verification
+- Database query performance under load
+
+#### Sample Integration Test
+```typescript
+// src/e2e/search-flow.spec.ts
+import { test, expect } from '@playwright/test';
+
+test('Complete search flow with real-time progress', async ({ page }) => {
+  // Navigate to application
+  await page.goto('/');
+  
+  // Authenticate user
+  await page.click('[data-testid="auth-login"]');
+  await page.fill('[data-testid="email-input"]', 'test@example.com');
+  await page.fill('[data-testid="password-input"]', 'password123');
+  await page.click('[data-testid="login-button"]');
+
+  // Create new search
+  await page.fill('[data-testid="company-input"]', 'Google');
+  await page.fill('[data-testid="role-input"]', 'Software Engineer');
+  await page.click('[data-testid="start-research-button"]');
+
+  // Verify progress dialog appears
+  await expect(page.locator('[data-testid="progress-dialog"]')).toBeVisible();
+
+  // Wait for progress updates (test real-time polling)
+  await expect(page.locator('[data-testid="progress-percentage"]')).not.toHaveText('0%');
+
+  // Wait for completion (with timeout for async processing)
+  await expect(page.locator('[data-testid="view-results-button"]')).toBeVisible({ timeout: 180000 });
+
+  // Navigate to results
+  await page.click('[data-testid="view-results-button"]');
+
+  // Verify results page
+  await expect(page.locator('[data-testid="interview-stages"]')).toBeVisible();
+  await expect(page.locator('[data-testid="preparation-questions"]')).toBeVisible();
+
+  // Test practice mode navigation
+  await page.click('[data-testid="start-practice-button"]');
+  await expect(page.locator('[data-testid="practice-question"]')).toBeVisible();
+});
+
+test('Search flow with service failures and fallbacks', async ({ page }) => {
+  // Mock API failures to test fallback behavior
+  await page.route('**/functions/v1/company-research', route => {
+    route.fulfill({ status: 500, body: 'Service temporarily unavailable' });
+  });
+
+  // Continue with search creation...
+  // Verify graceful degradation and user feedback
+  await expect(page.locator('[data-testid="fallback-message"]')).toBeVisible();
+});
+```
+
+### 13.6 Implementation Commands and Scripts
+
+#### Package.json Testing Scripts
+```json
+{
+  "scripts": {
+    "test": "vitest",
+    "test:ui": "vitest --ui",
+    "test:coverage": "vitest --coverage",
+    "test:watch": "vitest --watch",
+    "test:e2e": "playwright test",
+    "test:e2e:ui": "playwright test --ui",
+    "test:functions": "cd supabase/functions && deno test --allow-all",
+    "test:db": "supabase test db",
+    "test:integration": "npm run test:functions && npm run test:e2e",
+    "test:all": "npm run test && npm run test:functions && npm run test:e2e"
+  },
+  "devDependencies": {
+    "vitest": "^1.0.0",
+    "@vitest/ui": "^1.0.0",
+    "@vitest/coverage-v8": "^1.0.0",
+    "@testing-library/react": "^14.0.0",
+    "@testing-library/jest-dom": "^6.0.0",
+    "@testing-library/user-event": "^14.0.0",
+    "msw": "^2.0.0",
+    "@playwright/test": "^1.40.0",
+    "jsdom": "^23.0.0"
+  }
+}
+```
+
+#### Vitest Configuration
+```typescript
+// vitest.config.ts
+import { defineConfig } from 'vitest/config';
+import react from '@vitejs/plugin-react-swc';
+import path from 'path';
+
+export default defineConfig({
+  plugins: [react()],
+  test: {
+    globals: true,
+    environment: 'jsdom',
+    setupFiles: ['./src/test/setup.ts'],
+    coverage: {
+      reporter: ['text', 'json', 'html'],
+      exclude: [
+        'node_modules/',
+        'src/test/',
+        '**/*.d.ts',
+        '**/*.config.*',
+      ],
+    },
+  },
+  resolve: {
+    alias: {
+      '@': path.resolve(__dirname, './src'),
+    },
+  },
+});
+```
+
+#### Playwright Configuration
+```typescript
+// playwright.config.ts
+import { defineConfig, devices } from '@playwright/test';
+
+export default defineConfig({
+  testDir: './src/e2e',
+  fullyParallel: true,
+  forbidOnly: !!process.env.CI,
+  retries: process.env.CI ? 2 : 0,
+  workers: process.env.CI ? 1 : undefined,
+  reporter: 'html',
+  use: {
+    baseURL: 'http://localhost:8080',
+    trace: 'on-first-retry',
+  },
+  projects: [
+    {
+      name: 'chromium',
+      use: { ...devices['Desktop Chrome'] },
+    },
+    {
+      name: 'firefox',
+      use: { ...devices['Desktop Firefox'] },
+    },
+    {
+      name: 'webkit',
+      use: { ...devices['Desktop Safari'] },
+    },
+  ],
+  webServer: {
+    command: 'npm run dev',
+    url: 'http://localhost:8080',
+    reuseExistingServer: !process.env.CI,
+  },
+});
+```
+
+### 13.7 Testing Best Practices and Priorities
+
+#### Testing Priorities (Implementation Order)
+
+**Phase 1: Critical Path Testing (Immediate)**
+1. **ProgressDialog** + **useSearchProgress** - Async polling and real-time updates
+2. **interview-research** orchestration - Concurrent processing and timeout handling
+3. **Multi-engine search fallbacks** - Tavily → DuckDuckGo reliability
+
+**Phase 2: Core Logic Testing (Short-term)**
+4. **Authentication flow** - Login/logout/protected routes
+5. **Search creation and status management** - Database integration
+6. **Practice mode** - Question navigation and answer persistence
+
+**Phase 3: Integration Testing (Medium-term)**
+7. **Complete search flow** - End-to-end user journey
+8. **Performance testing** - 15s timeout validation, concurrent execution
+9. **Error recovery** - Graceful degradation and user feedback
+
+#### Testing Best Practices
+
+**1. Test Isolation**
+- Each test should be independent and idempotent
+- Use fresh database state for integration tests
+- Mock external dependencies consistently
+
+**2. Realistic Test Data**
+- Use actual company names and job descriptions
+- Test with varied input combinations
+- Include edge cases and boundary conditions
+
+**3. Async Testing Patterns**
+```typescript
+// Proper async testing with realistic timeouts
+test('should handle long-running search process', async () => {
+  const result = await searchService.createSearch({
+    company: 'Google',
+    role: 'Software Engineer'
+  });
+  
+  expect(result.success).toBe(true);
+  
+  // Poll for completion with realistic timeout
+  let attempts = 0;
+  let searchData;
+  
+  while (attempts < 60) { // 3 minutes maximum
+    await new Promise(resolve => setTimeout(resolve, 3000));
+    searchData = await searchService.getSearchResults(result.searchId);
+    
+    if (searchData.search?.search_status === 'completed') break;
+    attempts++;
+  }
+  
+  expect(searchData.search?.search_status).toBe('completed');
+  expect(searchData.stages).toHaveLength(4);
+});
+```
+
+**4. Error Testing Strategy**
+- Test all identified failure modes
+- Verify user-friendly error messages
+- Validate recovery mechanisms
+- Test timeout scenarios
+
+**5. Performance Testing Integration**
+- Monitor response times in tests
+- Validate concurrent execution patterns
+- Test memory cleanup and leak prevention
+- Verify database query performance
+
+#### Test Coverage Targets
+- **Critical Components**: 90%+ coverage (ProgressDialog, useSearchProgress, async processing)
+- **Core Logic**: 80%+ coverage (services, major components)
+- **Edge Functions**: 75%+ coverage (API endpoints, integration logic)
+- **Integration Flows**: 100% happy path + major error scenarios
+
+This comprehensive test framework ensures the reliability and performance of the INT application's most critical features while providing a solid foundation for future development and maintenance.
 
 ## 14. Scalability Considerations
 
@@ -2112,16 +2675,51 @@ const queryClient = new QueryClient({
 ## 16. Quick Reference
 
 ### 16.1 Common Commands
+
+#### Development Commands
 ```bash
 # Development
-npm run dev                    # Start development server
+npm run dev                    # Start development server (port 8080)
 npm run build                  # Production build
+npm run build:dev              # Development mode build
 npm run lint                   # Code quality check
+npm run preview                # Preview production build
 
-# Supabase
-npx supabase start            # Start local development
+# Testing Commands
+npm run test                   # Run unit tests with Vitest
+npm run test:ui                # Run tests with UI interface
+npm run test:coverage          # Generate test coverage report
+npm run test:watch             # Run tests in watch mode
+npm run test:e2e               # Run end-to-end tests with Playwright
+npm run test:e2e:ui            # Run E2E tests with UI
+npm run test:functions         # Run Edge Function tests (Deno)
+npm run test:db                # Run database tests
+npm run test:integration       # Run all integration tests
+npm run test:all               # Run complete test suite
+```
+
+#### Supabase Commands
+```bash
+# Local Development
+npx supabase start            # Start local development environment
+npx supabase stop             # Stop local environment  
 npx supabase db reset         # Reset local database
-npx supabase gen types typescript --local > src/integrations/supabase/types.ts
+npx supabase status           # Check service status
+
+# Type Generation
+npx supabase gen types typescript --project-id xjjjvefsrkcszhuwtoss > src/types/supabase.ts
+
+# Remote Development (Recommended)
+npm run functions:deploy                    # Deploy all Edge Functions
+npm run functions:deploy-single FUNCTION_NAME  # Deploy specific function
+npm run functions:serve                     # Local function development
+npm run db:push                             # Push schema changes to remote
+npm run db:pull                             # Pull remote schema to local
+
+# Database Management
+npx supabase db push --db-url YOUR_DATABASE_URL     # Push migrations
+npx supabase db pull --db-url YOUR_DATABASE_URL     # Pull schema changes
+npx supabase db reset --db-url YOUR_DATABASE_URL    # Reset remote database
 ```
 
 ### 16.2 Key File Locations
@@ -2206,3 +2804,38 @@ console.log("Search params:", Object.fromEntries(searchParams));
 ---
 
 This technical design serves as the comprehensive blueprint for the INT application. It should be updated as the system evolves and new patterns emerge during development.
+
+## 17. Soft-Fail Concurrency & Partial Results (2025-08)
+
+### 17.1 Motivation
+- Long-running “Run Intel” jobs could stall or fail on a single sub-task timeout.
+- Users lacked clarity during delays and could not access partial results.
+
+### 17.2 Orchestrator Changes
+- Implemented soft-fail concurrency in `interview-research`:
+  - Uses `executeWithTimeoutSafe` to protect each sub-task (company, job, CV).
+  - Replaced fail-fast `Promise.all` with `Promise.allSettled` to continue with partial data.
+  - New progress step keys for partials: `COMPANY_RESEARCH_PARTIAL`, `JOB_ANALYSIS_PARTIAL`, `CV_ANALYSIS_PARTIAL`.
+  - Keeps pipeline moving; AI synthesis now tolerates null inputs.
+
+### 17.3 Progress & UX
+- New `PROGRESS_STEPS.STALLED` step for delayed updates (server-side capability).
+- Frontend `ProgressDialog`:
+  - Realtime updates via Postgres changes subscription (with polling fallback).
+  - Stalled detection (no DB update > 20s) with clear messaging.
+  - “View Partial Results” enabled while processing for early insights.
+
+### 17.4 Implementation Details
+- Files:
+  - `supabase/functions/_shared/progress-tracker.ts`
+    - Added partial progress steps and `executeWithTimeoutSafe`.
+  - `supabase/functions/interview-research/index.ts`
+    - Soft-fail concurrency + partial step updates.
+  - `src/hooks/useSearchProgress.ts`
+    - Realtime subscription to `searches` row; updates React Query cache.
+  - `src/components/ProgressDialog.tsx`
+    - Stalled detection and partial-results CTA.
+
+### 17.5 Non-Brute-Force Design
+- Time-bounded first pass that always completes with best-available data.
+- Optional future refinement can deepen results asynchronously without blocking UX.
