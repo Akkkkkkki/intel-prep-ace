@@ -26,7 +26,7 @@ const Home = () => {
     country: "",
     cv: "",
     roleLinks: "",
-    targetSeniority: undefined as SeniorityLevel | undefined
+    targetSeniority: "auto" as SeniorityLevel | "auto" | undefined
   });
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -54,7 +54,7 @@ const Home = () => {
         country: formData.country.trim() || undefined,
         roleLinks: formData.roleLinks.trim() || undefined,
         cv: formData.cv.trim() || undefined,
-        targetSeniority: formData.targetSeniority
+        targetSeniority: formData.targetSeniority === 'auto' ? undefined : formData.targetSeniority
       });
 
       if (result.success && result.searchId) {
@@ -78,7 +78,7 @@ const Home = () => {
           country: formData.country.trim() || undefined,
           roleLinks: formData.roleLinks.trim() || undefined,
           cv: formData.cv.trim() || undefined,
-          targetSeniority: formData.targetSeniority
+          targetSeniority: formData.targetSeniority === 'auto' ? undefined : formData.targetSeniority
         });
         
         // Step 3: Start polling for status updates
@@ -299,14 +299,17 @@ const Home = () => {
                 <div className="space-y-2">
                   <Label htmlFor="targetSeniority">Target Level (optional)</Label>
                   <Select
-                    value={formData.targetSeniority || ""}
-                    onValueChange={(value) => setFormData(prev => ({ ...prev, targetSeniority: value as SeniorityLevel || undefined }))}
+                    value={formData.targetSeniority}
+                    onValueChange={(value) => setFormData(prev => ({ 
+                      ...prev, 
+                      targetSeniority: (value === 'auto' ? undefined : value as SeniorityLevel)
+                    }))}
                   >
                     <SelectTrigger id="targetSeniority">
-                      <SelectValue placeholder="Auto-detect" />
+                      <SelectValue placeholder="Auto-detect from CV" />
                     </SelectTrigger>
                     <SelectContent>
-                      <SelectItem value="">
+                      <SelectItem value="auto">
                         <span className="text-muted-foreground">Auto-detect from CV</span>
                       </SelectItem>
                       <SelectItem value="junior">🌱 Junior (0-2 years)</SelectItem>

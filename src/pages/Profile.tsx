@@ -663,7 +663,6 @@ const Profile = () => {
                 </Card>
               )}
             </div>
-            </div>
 
             {/* CV Editor */}
             <div className="xl:col-span-1">
