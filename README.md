@@ -13,6 +13,7 @@ A modern, AI-powered interview preparation tool that helps small circles of frie
 - **Multi-Source Company Research**: Real-time data from Glassdoor, Levels.fyi, Blind, and more
 - **Job Description Analysis**: Automatic extraction and analysis of role requirements
 - **AI-Powered CV Analysis**: Intelligent skill extraction and gap analysis
+- **Seniority-Based Personalization**: Set your experience level (junior/mid/senior) for tailored questions
 - **Personalized Guidance**: Tailored preparation based on your actual background
 - **Structured AI Responses**: Comprehensive, accurate interview insights
 
@@ -20,6 +21,7 @@ A modern, AI-powered interview preparation tool that helps small circles of frie
 - **120-150 questions per search** regardless of experience level
 - **Research-driven approach** using actual candidate reports from Glassdoor, Reddit, Blind
 - **Experience-level adaptation** - same volume, different complexity for junior/mid/senior
+- **User-controlled seniority** - explicitly set target level or auto-detect from CV
 - **Company-specific intelligence** - 60%+ questions reference actual company information
 - Interview process overview with timeline
 - Stage-by-stage preparation guidance
@@ -213,6 +215,7 @@ The app uses a sophisticated microservices architecture with four specialized Ed
 Company: Meta
 Role: Software Engineer
 Country: United States
+Target Level: Auto-detect (or select Junior/Mid/Senior)
 ```
 
 ### Advanced Research with Context
@@ -220,11 +223,23 @@ Country: United States
 Company: Stripe
 Role: Senior Frontend Engineer
 Country: Ireland
+Target Level: Senior (override auto-detection)
 Role Links: 
 - https://stripe.com/jobs/listing/senior-frontend-engineer
 - https://careers.stripe.com/jobs/12345
 
 CV: [Upload your resume for personalized insights]
+```
+
+### Using Seniority Levels
+```
+Profile Settings:
+- Set your current experience level (Junior/Mid/Senior)
+- Questions adapt to your background
+
+Per-Search Override:
+- Applying for senior role as mid-level? Select "Senior" in search
+- Questions will match the target level, not your current level
 ```
 
 ### Practice Session
@@ -260,17 +275,19 @@ CV: [Upload your resume for personalized insights]
 
 ## 📋 MVP Status & Development Backlog
 
-> **Last Updated:** January 26, 2025  
-> **Current MVP Completion:** ~70% (18/30 core features complete)
+> **Last Updated:** October 25, 2025  
+> **Current MVP Completion:** ~75% (19/30 core features complete)
 
 ### 🎯 PRD vs Implementation Status
 
-#### ✅ **Implemented Features** (60%)
+#### ✅ **Implemented Features** (65%)
 - Email/password authentication with Supabase
 - Company research with multi-source AI analysis
 - Job description and CV analysis
+- **Seniority-based personalization** (junior/mid/senior) ✨ NEW
 - Interview stages generation (4-6 stages per company)
 - Question generation (120-150 questions per search)
+- **Experience-level adaptation** with smart fallback logic ✨ NEW
 - Practice mode with filtering by stage/category/difficulty
 - Voice recording capability
 - Session tracking and answer persistence
@@ -284,8 +301,8 @@ CV: [Upload your resume for personalized insights]
 - **Question Quality**: Has confidence scoring, no user rating
 - **Progress Analytics**: No dashboard (planned)
 
-#### 🔴 **Critical Gaps** (20%)
-1. **Seniority-Based Personalization** - No seniority field in UI/database
+#### 🔴 **Critical Gaps** (15%)
+1. ~~**Seniority-Based Personalization**~~ ✅ **COMPLETED** (Epic 1.1)
 2. **Question Session Sampler** - Shows all 100+ questions instead of 10-15
 3. **Favorite/Flag Questions** - No favoriting or flagging mechanism
 4. **Swipe/Gesture Interface** - Traditional buttons only, no gestures
@@ -299,23 +316,32 @@ CV: [Upload your resume for personalized insights]
 #### **PHASE 1: Critical MVP Gaps** (2-3 weeks)
 
 <details>
-<summary><b>Epic 1.1: Seniority-Based Personalization</b> ⏱️ 5 days</summary>
+<summary><b>✅ Epic 1.1: Seniority-Based Personalization</b> ✅ COMPLETED (Oct 25, 2024)</summary>
 
 **User Story**: As a user, I want to specify my seniority level so questions match my experience level.
 
 **Tasks**:
-- [ ] Add `seniority` enum to `profiles` table (`junior`, `mid`, `senior`)
-- [ ] Add `target_seniority` to `searches` table
-- [ ] Add seniority selector to Profile page
-- [ ] Add seniority field to Home search form
-- [ ] Update question generator to adapt difficulty by seniority
-- [ ] Create and test database migration
+- [x] Add `seniority` enum to `profiles` table (`junior`, `mid`, `senior`)
+- [x] Add `target_seniority` to `searches` table
+- [x] Add seniority selector to Profile page
+- [x] Add seniority field to Home search form
+- [x] Update question generator to adapt difficulty by seniority
+- [x] Create and test database migration
 
-**Files to Change**:
-- `supabase/migrations/` - New migration
-- `src/pages/Profile.tsx` - Add seniority selector
-- `src/pages/Home.tsx` - Add seniority field
-- `supabase/functions/interview-question-generator/index.ts` - Difficulty adaptation
+**Implementation Details**:
+- ✅ Database migration: `20251025000000_add_seniority_fields.sql`
+- ✅ Profile page: Experience Level card with dropdown selector
+- ✅ Home page: Target Level field (optional, defaults to auto-detect)
+- ✅ Smart fallback logic: User selection → Profile seniority → CV inference → Default 'mid'
+- ✅ Question generator: Same volume (120-150), different complexity based on level
+
+**Files Changed**:
+- `supabase/migrations/20251025000000_add_seniority_fields.sql` - New migration
+- `src/pages/Profile.tsx` - Experience Level card with selector
+- `src/pages/Home.tsx` - Target Level field in search form
+- `src/services/searchService.ts` - Profile update methods
+- `supabase/functions/interview-research/index.ts` - Pass targetSeniority
+- `supabase/functions/interview-question-generator/index.ts` - Fallback logic implementation
 </details>
 
 <details>
@@ -486,9 +512,9 @@ CREATE TABLE user_question_flags (
 ### 🎯 Recommended Sprint Plan
 
 #### **Sprint 1** (Week 1-2): Foundation
-- ✅ Epic 1.1: Seniority Personalization (5 days)
-- ✅ Epic 1.2: Question Sampler (4 days)
-- ✅ Epic 1.3: Favorite/Flag Questions (3 days)
+- ✅ Epic 1.1: Seniority Personalization (5 days) - **COMPLETED Oct 25, 2024**
+- ⏳ Epic 1.2: Question Sampler (4 days) - **IN PROGRESS**
+- ⏳ Epic 1.3: Favorite/Flag Questions (3 days)
 
 #### **Sprint 2** (Week 3-4): Enhanced UX
 - ✅ Epic 2.2: Audio STT (5 days)
