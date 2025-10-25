@@ -6,6 +6,8 @@ import { Textarea } from "@/components/ui/textarea";
 import { Badge } from "@/components/ui/badge";
 import { Separator } from "@/components/ui/separator";
 import { Alert, AlertDescription } from "@/components/ui/alert";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { Label } from "@/components/ui/label";
 import { 
   FileText, 
   Upload, 
@@ -24,10 +26,13 @@ import {
   Globe,
   Code,
   Star,
-  Building
+  Building,
+  TrendingUp
 } from "lucide-react";
 import { searchService } from "@/services/searchService";
 import { useAuthContext } from "@/components/AuthProvider";
+
+type SeniorityLevel = 'junior' | 'mid' | 'senior';
 
 interface ParsedData {
   personalInfo?: {
@@ -90,8 +95,10 @@ const Profile = () => {
   const [success, setSuccess] = useState<string | null>(null);
   const [parsedData, setParsedData] = useState<ParsedData | null>(null);
   const [isAnalyzing, setIsAnalyzing] = useState(false);
+  const [seniority, setSeniority] = useState<SeniorityLevel | undefined>(undefined);
+  const [isSavingSeniority, setIsSavingSeniority] = useState(false);
 
-  // Load existing CV data
+  // Load existing CV data and profile settings
   useEffect(() => {
     const loadProfile = async () => {
       if (!user) {
@@ -102,6 +109,14 @@ const Profile = () => {
 
       try {
         console.log("Loading profile for user:", user.id);
+        
+        // Load profile settings including seniority
+        const profileResult = await searchService.getProfile(user.id);
+        if (profileResult.success && profileResult.profile) {
+          setSeniority(profileResult.profile.seniority as SeniorityLevel | undefined);
+        }
+        
+        // Load resume
         const result = await searchService.getResume(user.id);
         
         console.log("Resume loading result:", {
@@ -207,6 +222,32 @@ const Profile = () => {
     }
   };
 
+  const handleSaveSeniority = async (value: SeniorityLevel) => {
+    if (!user) return;
+
+    setIsSavingSeniority(true);
+    setError(null);
+
+    try {
+      const result = await searchService.updateProfile({
+        seniority: value
+      });
+
+      if (result.success) {
+        setSeniority(value);
+        setSuccess("Experience level updated successfully!");
+        setTimeout(() => setSuccess(null), 3000);
+      } else {
+        setError(result.error?.message || "Failed to update experience level");
+      }
+    } catch (err) {
+      console.error("Error updating seniority:", err);
+      setError("An unexpected error occurred");
+    } finally {
+      setIsSavingSeniority(false);
+    }
+  };
+
 
 
 
@@ -256,7 +297,69 @@ const Profile = () => {
 
           <div className="grid grid-cols-1 xl:grid-cols-3 gap-8">
             {/* Parsed CV Information */}
-            <div className="xl:col-span-2">
+            <div className="xl:col-span-2 space-y-6">
+              {/* Experience Level Card */}
+              <Card>
+                <CardHeader>
+                  <CardTitle className="flex items-center gap-2">
+                    <TrendingUp className="h-5 w-5 text-primary" />
+                    Experience Level
+                  </CardTitle>
+                  <CardDescription>
+                    Set your current experience level to get better-matched interview questions
+                  </CardDescription>
+                </CardHeader>
+                <CardContent className="space-y-4">
+                  <div className="space-y-2">
+                    <Label htmlFor="seniority">Current Experience Level</Label>
+                    <Select
+                      value={seniority || ""}
+                      onValueChange={(value) => handleSaveSeniority(value as SeniorityLevel)}
+                      disabled={isSavingSeniority}
+                    >
+                      <SelectTrigger id="seniority" className="w-full">
+                        <SelectValue placeholder="Select your experience level..." />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="junior">
+                          <div className="flex flex-col items-start">
+                            <span className="font-medium">Junior (0-2 years)</span>
+                            <span className="text-xs text-muted-foreground">Focus on fundamentals and learning</span>
+                          </div>
+                        </SelectItem>
+                        <SelectItem value="mid">
+                          <div className="flex flex-col items-start">
+                            <span className="font-medium">Mid-level (3-7 years)</span>
+                            <span className="text-xs text-muted-foreground">Focus on execution and leadership</span>
+                          </div>
+                        </SelectItem>
+                        <SelectItem value="senior">
+                          <div className="flex flex-col items-start">
+                            <span className="font-medium">Senior (8+ years)</span>
+                            <span className="text-xs text-muted-foreground">Focus on strategy and mentorship</span>
+                          </div>
+                        </SelectItem>
+                      </SelectContent>
+                    </Select>
+                    <p className="text-xs text-muted-foreground">
+                      This helps tailor question difficulty and focus. You can override this per-search if applying for different levels.
+                    </p>
+                  </div>
+                  
+                  {seniority && (
+                    <div className="p-3 bg-muted rounded-lg">
+                      <p className="text-sm">
+                        <strong>Current:</strong>{" "}
+                        <Badge variant="outline" className="ml-1">
+                          {seniority === 'junior' && '🌱 Junior'}
+                          {seniority === 'mid' && '🚀 Mid-level'}
+                          {seniority === 'senior' && '⭐ Senior'}
+                        </Badge>
+                      </p>
+                    </div>
+                  )}
+                </CardContent>
+              </Card>
               {parsedData ? (
                 <div className="space-y-6">
                   {/* Personal Information */}
@@ -559,6 +662,7 @@ const Profile = () => {
                   </CardContent>
                 </Card>
               )}
+            </div>
             </div>
 
             {/* CV Editor */}

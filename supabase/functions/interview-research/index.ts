@@ -15,6 +15,7 @@ interface SynthesisRequest {
   country?: string;
   roleLinks?: string[];
   cv?: string;
+  targetSeniority?: 'junior' | 'mid' | 'senior';
   userId: string;
   searchId: string;
 }
@@ -267,7 +268,8 @@ async function generateEnhancedQuestions(
   companyInsights: any,
   jobRequirements: any,
   cvAnalysis: any,
-  interviewStages: any[]
+  interviewStages: any[],
+  targetSeniority?: 'junior' | 'mid' | 'senior'
 ) {
   try {
     console.log("Calling interview-question-generator function...");
@@ -286,7 +288,8 @@ async function generateEnhancedQuestions(
           jobRequirements,
           cvAnalysis,
           interviewStage: stage.name,
-          stageDetails: stage
+          stageDetails: stage,
+          targetSeniority
         }),
       });
 
@@ -782,14 +785,14 @@ serve(async (req) => {
   }
 
   try {
-    const { company, role, country, roleLinks, cv, userId, searchId } = await req.json() as SynthesisRequest;
+    const { company, role, country, roleLinks, cv, targetSeniority, userId, searchId } = await req.json() as SynthesisRequest;
     
     // Initialize progress tracker for real-time updates
     const tracker = new ProgressTracker(searchId);
     await tracker.updateStep('INITIALIZING');
     
     // Start background processing (fire-and-forget pattern)
-    processResearchAsync(company, role, country, roleLinks, cv, userId, searchId, tracker)
+    processResearchAsync(company, role, country, roleLinks, cv, targetSeniority, userId, searchId, tracker)
       .catch(async (error) => {
         console.error('Background processing failed:', error);
         await tracker.markFailed(error.message);
@@ -830,6 +833,7 @@ async function processResearchAsync(
   country: string | undefined,
   roleLinks: string[] | undefined,
   cv: string | undefined,
+  targetSeniority: 'junior' | 'mid' | 'senior' | undefined,
   userId: string,
   searchId: string,
   tracker: ProgressTracker
@@ -938,7 +942,8 @@ async function processResearchAsync(
         companyInsights,
         jobRequirements,
         cvAnalysis?.aiAnalysis || cvAnalysis,
-        synthesisResult.interview_stages
+        synthesisResult.interview_stages,
+        targetSeniority
       )
     ]);
 

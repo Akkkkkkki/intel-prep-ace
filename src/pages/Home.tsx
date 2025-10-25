@@ -5,6 +5,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Textarea } from "@/components/ui/textarea";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Upload, Search, FileText, AlertCircle } from "lucide-react";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { searchService } from "@/services/searchService";
@@ -12,6 +13,8 @@ import { useAuth } from "@/hooks/useAuth";
 import { useToast } from "@/hooks/use-toast";
 import Navigation from "@/components/Navigation";
 import ProgressDialog from "@/components/ProgressDialog";
+
+type SeniorityLevel = 'junior' | 'mid' | 'senior';
 
 const Home = () => {
   const navigate = useNavigate();
@@ -22,7 +25,8 @@ const Home = () => {
     role: "",
     country: "",
     cv: "",
-    roleLinks: ""
+    roleLinks: "",
+    targetSeniority: undefined as SeniorityLevel | undefined
   });
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -49,7 +53,8 @@ const Home = () => {
         role: formData.role.trim() || undefined,
         country: formData.country.trim() || undefined,
         roleLinks: formData.roleLinks.trim() || undefined,
-        cv: formData.cv.trim() || undefined
+        cv: formData.cv.trim() || undefined,
+        targetSeniority: formData.targetSeniority
       });
 
       if (result.success && result.searchId) {
@@ -72,7 +77,8 @@ const Home = () => {
           role: formData.role.trim() || undefined,
           country: formData.country.trim() || undefined,
           roleLinks: formData.roleLinks.trim() || undefined,
-          cv: formData.cv.trim() || undefined
+          cv: formData.cv.trim() || undefined,
+          targetSeniority: formData.targetSeniority
         });
         
         // Step 3: Start polling for status updates
@@ -269,7 +275,7 @@ const Home = () => {
                 />
               </div>
 
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+              <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
                 <div className="space-y-2">
                   <Label htmlFor="role">Role (optional)</Label>
                   <Input
@@ -288,6 +294,26 @@ const Home = () => {
                     value={formData.country}
                     onChange={(e) => setFormData(prev => ({ ...prev, country: e.target.value }))}
                   />
+                </div>
+
+                <div className="space-y-2">
+                  <Label htmlFor="targetSeniority">Target Level (optional)</Label>
+                  <Select
+                    value={formData.targetSeniority || ""}
+                    onValueChange={(value) => setFormData(prev => ({ ...prev, targetSeniority: value as SeniorityLevel || undefined }))}
+                  >
+                    <SelectTrigger id="targetSeniority">
+                      <SelectValue placeholder="Auto-detect" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="">
+                        <span className="text-muted-foreground">Auto-detect from CV</span>
+                      </SelectItem>
+                      <SelectItem value="junior">🌱 Junior (0-2 years)</SelectItem>
+                      <SelectItem value="mid">🚀 Mid-level (3-7 years)</SelectItem>
+                      <SelectItem value="senior">⭐ Senior (8+ years)</SelectItem>
+                    </SelectContent>
+                  </Select>
                 </div>
               </div>
 

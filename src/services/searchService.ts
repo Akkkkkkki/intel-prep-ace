@@ -6,11 +6,12 @@ interface CreateSearchParams {
   country?: string;
   roleLinks?: string;
   cv?: string;
+  targetSeniority?: 'junior' | 'mid' | 'senior';
 }
 
 export const searchService = {
   // Step 1: Create search record only (fast, synchronous)
-  async createSearchRecord({ company, role, country, roleLinks, cv }: CreateSearchParams) {
+  async createSearchRecord({ company, role, country, roleLinks, cv, targetSeniority }: CreateSearchParams) {
     try {
       // Get the current user first
       const { data: { user }, error: userError } = await supabase.auth.getUser();
@@ -28,6 +29,7 @@ export const searchService = {
           role,
           country,
           role_links: roleLinks,
+          target_seniority: targetSeniority,
           search_status: "pending",
         })
         .select()
@@ -43,7 +45,7 @@ export const searchService = {
   },
 
   // Step 2: Start processing asynchronously (can take minutes)
-  async startProcessing(searchId: string, { company, role, country, roleLinks, cv }: CreateSearchParams) {
+  async startProcessing(searchId: string, { company, role, country, roleLinks, cv, targetSeniority }: CreateSearchParams) {
     try {
       // Get the current user
       const { data: { user }, error: userError } = await supabase.auth.getUser();
@@ -65,6 +67,7 @@ export const searchService = {
           country,
           roleLinks: roleLinks ? roleLinks.split("\n").filter(link => link.trim()) : [],
           cv,
+          targetSeniority,
           userId: user.id,
           searchId,
         }
@@ -332,6 +335,47 @@ export const searchService = {
       return { resume: data, success: true };
     } catch (error) {
       console.error("Error saving resume:", error);
+      return { error, success: false };
+    }
+  },
+
+  async getProfile(userId: string) {
+    try {
+      const { data, error } = await supabase
+        .from("profiles")
+        .select("*")
+        .eq("id", userId)
+        .single();
+
+      if (error) throw error;
+
+      return { profile: data, success: true };
+    } catch (error) {
+      console.error("Error getting profile:", error);
+      return { error, success: false };
+    }
+  },
+
+  async updateProfile({ seniority }: { seniority?: 'junior' | 'mid' | 'senior' }) {
+    try {
+      const { data: { user }, error: userError } = await supabase.auth.getUser();
+      
+      if (userError || !user) {
+        throw new Error("No authenticated user");
+      }
+      
+      const { data, error } = await supabase
+        .from("profiles")
+        .update({ seniority })
+        .eq("id", user.id)
+        .select()
+        .single();
+
+      if (error) throw error;
+
+      return { profile: data, success: true };
+    } catch (error) {
+      console.error("Error updating profile:", error);
       return { error, success: false };
     }
   },

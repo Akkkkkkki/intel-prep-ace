@@ -14,6 +14,7 @@ interface QuestionGenerationRequest {
   cvAnalysis: any;
   interviewStage: string;
   stageDetails: any;
+  targetSeniority?: 'junior' | 'mid' | 'senior';
 }
 
 interface GeneratedQuestion {
@@ -45,6 +46,7 @@ async function generateInterviewQuestions(
   cvAnalysis: any,
   interviewStage: string,
   stageDetails: any,
+  targetSeniority: 'junior' | 'mid' | 'senior' | undefined,
   openaiApiKey: string
 ): Promise<QuestionBank> {
   
@@ -91,13 +93,30 @@ async function generateInterviewQuestions(
     questionContext += `Interview Process Hints: ${jobRequirements.interview_process_hints?.join(', ')}\n`;
   }
   
-  // Build candidate context
-  if (cvAnalysis) {
-    const experienceYears = cvAnalysis.experience_years || 0;
-    let experienceLevel = 'junior';
+  // Determine experience level with fallback logic:
+  // 1. Use targetSeniority if provided (user's explicit choice)
+  // 2. Fall back to CV-inferred level
+  // 3. Default to 'mid' if neither exists
+  let experienceLevel = 'mid'; // Default
+  let experienceYears = 0;
+  
+  if (targetSeniority) {
+    // User explicitly set target seniority - use it
+    experienceLevel = targetSeniority;
+    console.log(`Using user-specified target seniority: ${experienceLevel}`);
+  } else if (cvAnalysis) {
+    // Infer from CV experience
+    experienceYears = cvAnalysis.experience_years || 0;
     if (experienceYears >= 8) experienceLevel = 'senior';
     else if (experienceYears >= 3) experienceLevel = 'mid';
-    
+    else experienceLevel = 'junior';
+    console.log(`Inferred seniority from CV: ${experienceLevel} (${experienceYears} years)`);
+  } else {
+    console.log('No seniority information available, defaulting to mid-level');
+  }
+  
+  // Build candidate context
+  if (cvAnalysis) {
     questionContext += `\nCANDIDATE PROFILE:\n`;
     questionContext += `Current Role: ${cvAnalysis.current_role}\n`;
     questionContext += `Experience: ${experienceYears} years (${experienceLevel} level)\n`;
@@ -105,17 +124,20 @@ async function generateInterviewQuestions(
     questionContext += `Technical Skills: ${cvAnalysis.skills?.technical?.join(', ')}\n`;
     questionContext += `Key Achievements: ${cvAnalysis.key_achievements?.join(', ')}\n`;
     questionContext += `Experience History: ${cvAnalysis.experience?.map(exp => `${exp.role} at ${exp.company}`).join(', ')}\n`;
-    
-    // Add specific guidance based on experience level - SAME VOLUME, DIFFERENT COMPLEXITY
-    questionContext += `\nTARGET: Generate 18-22 questions per category for TOTAL 120-150 questions regardless of experience level.\n`;
-    
-    if (experienceLevel === 'junior') {
-      questionContext += `\nFOCUS FOR JUNIOR CANDIDATE: Fundamentals, learning ability, potential, adaptability. Questions should focus on basic concepts, learning scenarios, and growth mindset.\n`;
-    } else if (experienceLevel === 'mid') {
-      questionContext += `\nFOCUS FOR MID-LEVEL CANDIDATE: Execution, problem-solving, leadership potential, project management. Questions should focus on project ownership, technical depth, and team collaboration.\n`;
-    } else {
-      questionContext += `\nFOCUS FOR SENIOR CANDIDATE: Strategic thinking, mentorship, complex problem-solving, system design, team leadership. Questions should focus on architecture, business impact, and organizational influence.\n`;
-    }
+  } else {
+    questionContext += `\nCANDIDATE PROFILE:\n`;
+    questionContext += `Experience Level: ${experienceLevel.toUpperCase()} - Adjust question difficulty and quantity accordingly\n`;
+  }
+  
+  // Add specific guidance based on experience level - SAME VOLUME, DIFFERENT COMPLEXITY
+  questionContext += `\nTARGET: Generate 18-22 questions per category for TOTAL 120-150 questions regardless of experience level.\n`;
+  
+  if (experienceLevel === 'junior') {
+    questionContext += `\nFOCUS FOR JUNIOR CANDIDATE: Fundamentals, learning ability, potential, adaptability. Questions should focus on basic concepts, learning scenarios, and growth mindset.\n`;
+  } else if (experienceLevel === 'mid') {
+    questionContext += `\nFOCUS FOR MID-LEVEL CANDIDATE: Execution, problem-solving, leadership potential, project management. Questions should focus on project ownership, technical depth, and team collaboration.\n`;
+  } else {
+    questionContext += `\nFOCUS FOR SENIOR CANDIDATE: Strategic thinking, mentorship, complex problem-solving, system design, team leadership. Questions should focus on architecture, business impact, and organizational influence.\n`;
   }
 
   const response = await fetch('https://api.openai.com/v1/chat/completions', {
@@ -305,7 +327,7 @@ serve(async (req) => {
   }
 
   try {
-    const { searchId, userId, companyInsights, jobRequirements, cvAnalysis, interviewStage, stageDetails } = await req.json() as QuestionGenerationRequest;
+    const { searchId, userId, companyInsights, jobRequirements, cvAnalysis, interviewStage, stageDetails, targetSeniority } = await req.json() as QuestionGenerationRequest;
 
     if (!searchId || !userId) {
       throw new Error("Missing required parameters: searchId and userId");
@@ -317,7 +339,7 @@ serve(async (req) => {
       throw new Error("Missing OpenAI API key");
     }
 
-    console.log("Starting interview question generation for search:", searchId, "stage:", interviewStage);
+    console.log("Starting interview question generation for search:", searchId, "stage:", interviewStage, "targetSeniority:", targetSeniority);
 
     // Generate comprehensive question bank
     const questionBank = await generateInterviewQuestions(
@@ -326,6 +348,7 @@ serve(async (req) => {
       cvAnalysis,
       interviewStage,
       stageDetails,
+      targetSeniority,
       openaiApiKey
     );
 
