@@ -29,6 +29,7 @@ import {
   Shuffle
 } from "lucide-react";
 import { searchService } from "@/services/searchService";
+import { sessionSampler } from "@/services/sessionSampler";
 import { useAuth } from "@/hooks/useAuth";
 
 interface EnhancedQuestion {
@@ -108,12 +109,23 @@ const Practice = () => {
   const [error, setError] = useState<string | null>(null);
   const [practiceSession, setPracticeSession] = useState<PracticeSession | null>(null);
   const [savedAnswers, setSavedAnswers] = useState<Map<string, boolean>>(new Map());
-  const [showStageSelector, setShowStageSelector] = useState(false);
   
-  // Enhanced question filtering
-  const [selectedCategories, setSelectedCategories] = useState<string[]>(['all']);
-  const [selectedDifficulty, setSelectedDifficulty] = useState<string>('all');
-  const [shuffleQuestions, setShuffleQuestions] = useState(false);
+  // Enhanced question filtering - applied filters (used during session)
+  const [appliedCategories, setAppliedCategories] = useState<string[]>([]);
+  const [appliedDifficulties, setAppliedDifficulties] = useState<string[]>([]);
+  const [appliedShuffle, setAppliedShuffle] = useState<boolean>(false);
+  
+  // Temporary filters during setup (not applied until session begins)
+  const [tempCategories, setTempCategories] = useState<string[]>([]);
+  const [tempDifficulties, setTempDifficulties] = useState<string[]>([]);
+  const [tempShuffle, setTempShuffle] = useState<boolean>(false);
+  
+  // Session sampling
+  const [sampleSize, setSampleSize] = useState<number>(10);
+  const [useSampling, setUseSampling] = useState<boolean>(false);
+  
+  // Session state: 'setup' | 'inProgress' | 'completed'
+  const [sessionState, setSessionState] = useState<'setup' | 'inProgress' | 'completed'>('setup');
   
   // Voice recording states
   const [isRecording, setIsRecording] = useState(false);
@@ -244,17 +256,17 @@ const Practice = () => {
         // Apply filters and sorting
         let filteredQuestions = allQuestions;
         
-        // Filter by categories
-        if (selectedCategories.length > 0 && !selectedCategories.includes('all')) {
+        // Filter by categories (only if applied filters exist)
+        if (appliedCategories.length > 0) {
           filteredQuestions = filteredQuestions.filter(q => 
-            q.category && selectedCategories.includes(q.category)
+            q.category && appliedCategories.includes(q.category)
           );
         }
         
-        // Filter by difficulty
-        if (selectedDifficulty !== 'all') {
+        // Filter by difficulty (only if applied filters exist)
+        if (appliedDifficulties.length > 0) {
           filteredQuestions = filteredQuestions.filter(q => 
-            q.difficulty === selectedDifficulty
+            q.difficulty && appliedDifficulties.includes(q.difficulty)
           );
         }
         
@@ -266,14 +278,19 @@ const Practice = () => {
         });
         
         // Shuffle if requested
-        const finalQuestions = shuffleQuestions 
+        let processedQuestions = appliedShuffle 
           ? sortedQuestions.sort(() => Math.random() - 0.5)
           : sortedQuestions;
         
-        setQuestions(finalQuestions);
+        // Apply sampling if enabled
+        if (useSampling && sampleSize > 0) {
+          processedQuestions = sessionSampler.sampleQuestions(processedQuestions, sampleSize);
+        }
+        
+        setQuestions(processedQuestions);
 
         // Create practice session if questions exist
-        if (finalQuestions.length > 0) {
+        if (processedQuestions.length > 0) {
           const sessionResult = await searchService.createPracticeSession(searchId);
           
           if (sessionResult.success && sessionResult.session) {
@@ -291,7 +308,7 @@ const Practice = () => {
     if (allStages.length > 0) {
       loadPracticeSession();
     }
-  }, [allStages, selectedCategories, selectedDifficulty, shuffleQuestions, searchId]);
+  }, [allStages, appliedCategories, appliedDifficulties, appliedShuffle, searchId, useSampling, sampleSize]);
 
   // Reset timer when question changes
   useEffect(() => {
@@ -400,6 +417,50 @@ const Practice = () => {
     setRecordingTime(0);
   };
 
+  const handleBeginSession = () => {
+    // Apply temporary filters to active filters
+    setAppliedCategories(tempCategories);
+    setAppliedDifficulties(tempDifficulties);
+    setAppliedShuffle(tempShuffle);
+    
+    setUseSampling(true);
+    setSessionState('inProgress');
+    setCurrentIndex(0);
+  };
+
+  const handleStartNewSession = () => {
+    setSessionState('setup');
+    setUseSampling(false);
+    setCurrentIndex(0);
+    setAnswers(new Map());
+    setQuestionTimers(new Map());
+    setSavedAnswers(new Map());
+    
+    // Reset filters
+    setAppliedCategories([]);
+    setAppliedDifficulties([]);
+    setAppliedShuffle(false);
+    setTempCategories([]);
+    setTempDifficulties([]);
+    setTempShuffle(false);
+  };
+  
+  const toggleCategory = (category: string) => {
+    setTempCategories(prev => 
+      prev.includes(category) 
+        ? prev.filter(c => c !== category)
+        : [...prev, category]
+    );
+  };
+  
+  const toggleDifficulty = (difficulty: string) => {
+    setTempDifficulties(prev => 
+      prev.includes(difficulty) 
+        ? prev.filter(d => d !== difficulty)
+        : [...prev, difficulty]
+    );
+  };
+
   const handleSaveAnswer = async () => {
     const currentAnswer = answers.get(currentQuestion.id) || "";
     if (!currentAnswer.trim() && !hasRecording || !practiceSession) return;
@@ -430,8 +491,12 @@ const Practice = () => {
         // Save question time
         setQuestionTimers(prev => new Map(prev).set(questionId, timeSpent));
         
-        // Auto-advance if not last question
-        if (currentIndex < questions.length - 1) {
+        // Check if this is the last question
+        if (currentIndex >= questions.length - 1) {
+          // Mark session as completed
+          setSessionState('completed');
+        } else {
+          // Auto-advance to next question
           setTimeout(() => {
             setCurrentIndex(prev => prev + 1);
           }, 500);
@@ -641,94 +706,38 @@ const Practice = () => {
     );
   }
 
-  // Show stage selector when no stages are selected or no questions available
-  if (allStages.length > 0 && questions.length === 0) {
-    return (
-      <div className="min-h-screen bg-background">
-        <Navigation />
-        <div className="container mx-auto px-4 py-8">
-          <div className="max-w-4xl mx-auto">
-            <Card className="mb-6">
-              <CardHeader>
-                <CardTitle className="flex items-center gap-2">
-                  <Settings className="h-5 w-5 text-primary" />
-                  Select Interview Stages to Practice
-                </CardTitle>
-                <CardDescription>
-                  Choose which interview rounds you want to practice. You can change this selection anytime.
-                </CardDescription>
-              </CardHeader>
-              <CardContent>
-                <div className="space-y-4">
-                  {allStages.map((stage, index) => (
-                    <div key={stage.id} className="border rounded-lg p-4">
-                      <div className="flex items-start gap-4">
-                        <Checkbox
-                          checked={stage.selected}
-                          onCheckedChange={() => handleStageToggle(stage.id)}
-                          className="mt-1"
-                        />
-                        <div className="flex-1">
-                          <div className="flex items-center gap-3 mb-2">
-                            <Badge variant="outline" className="text-xs">
-                              Stage {index + 1}
-                            </Badge>
-                            <h3 className="font-semibold">{stage.name}</h3>
-                            <span className="text-sm text-muted-foreground">
-                              {stage.questions?.length || 0} questions
-                            </span>
-                          </div>
-                          <p className="text-sm text-muted-foreground">
-                            {stage.content || "Interview stage content"}
-                          </p>
-                        </div>
-                      </div>
-                    </div>
-                  ))}
-                </div>
-                <div className="mt-6 text-center">
-                  <p className="text-sm text-muted-foreground mb-4">
-                    {selectedStagesCount} stage{selectedStagesCount !== 1 ? 's' : ''} selected • {allStages.filter(stage => stage.selected).reduce((acc, stage) => acc + (stage.questions?.length || 0), 0)} total questions
-                  </p>
-                  {selectedStagesCount === 0 ? (
-                    <p className="text-sm text-amber-600">Please select at least one stage to start practicing</p>
-                  ) : (
-                    <Button onClick={() => window.location.reload()}>
-                      Start Practice Session
-                    </Button>
-                  )}
-                </div>
-              </CardContent>
-            </Card>
-            
-            <div className="text-center">
-              <Button variant="outline" onClick={() => navigate(`/dashboard?searchId=${searchId}`)}>
-                <ChevronLeft className="h-4 w-4 mr-2" />
-                Back to Dashboard
-              </Button>
-            </div>
-          </div>
-        </div>
-      </div>
-    );
-  }
-
-  if (!currentQuestion) {
+  // If no questions available after filtering, show appropriate message
+  if (!currentQuestion && sessionState === 'inProgress') {
     return (
       <div className="min-h-screen bg-background">
         <Navigation />
         <div className="container mx-auto px-4 py-8">
           <Card className="w-full max-w-md mx-auto text-center">
             <CardHeader>
-              <CardTitle>No Questions Available</CardTitle>
+              <AlertCircle className="h-12 w-12 text-amber-500 mx-auto mb-4" />
+              <CardTitle>No Questions Match Your Filters</CardTitle>
             </CardHeader>
-            <CardContent>
-              <p className="text-muted-foreground mb-4">
-                No questions found for the selected stages. Please go back and select different stages.
+            <CardContent className="space-y-3">
+              <p className="text-muted-foreground">
+                Your current filter settings resulted in no questions. Try adjusting your categories, difficulty levels, or selected stages.
               </p>
-              <Button onClick={() => navigate(`/dashboard${searchId ? `?searchId=${searchId}` : ''}`)}>
-                Back to Dashboard
-              </Button>
+              <div className="space-y-2">
+                <Button 
+                  onClick={handleStartNewSession}
+                  className="w-full"
+                >
+                  <Settings className="h-4 w-4 mr-2" />
+                  Adjust Filters
+                </Button>
+                <Button 
+                  variant="outline"
+                  onClick={() => navigate(`/dashboard${searchId ? `?searchId=${searchId}` : ''}`)}
+                  className="w-full"
+                >
+                  <ChevronLeft className="h-4 w-4 mr-2" />
+                  Back to Dashboard
+                </Button>
+              </div>
             </CardContent>
           </Card>
         </div>
@@ -736,6 +745,271 @@ const Practice = () => {
     );
   }
 
+  // Session Setup State - Show filters and configuration
+  if (sessionState === 'setup') {
+    return (
+      <div className="min-h-screen bg-background">
+        <Navigation />
+        <div className="container mx-auto px-4 py-8 max-w-4xl">
+          <div className="flex items-center justify-between mb-6">
+            <Button variant="outline" size="sm" onClick={() => navigate(`/dashboard${searchId ? `?searchId=${searchId}` : ''}`)}>
+              <ChevronLeft className="h-4 w-4 mr-2" />
+              Back to Dashboard
+            </Button>
+            <div className="text-sm text-muted-foreground">
+              {searchData?.company && `${searchData.company}`}
+              {searchData?.role && ` - ${searchData.role}`}
+            </div>
+          </div>
+
+          <Card>
+            <CardHeader>
+              <CardTitle className="flex items-center gap-2">
+                <Settings className="h-5 w-5 text-primary" />
+                Configure Your Practice Session
+              </CardTitle>
+              <CardDescription>
+                Set up your practice preferences before starting the session
+              </CardDescription>
+            </CardHeader>
+            <CardContent className="space-y-6">
+              {/* Practice Session Sampler */}
+              <div className="space-y-4 border-b pb-4">
+                <h4 className="text-sm font-medium">Practice Session</h4>
+                <div className="flex items-end gap-3">
+                  <div className="flex-1 space-y-2">
+                    <label className="text-xs text-muted-foreground">Number of Questions</label>
+                    <input
+                      type="number"
+                      min="1"
+                      max="100"
+                      value={sampleSize}
+                      onChange={(e) => setSampleSize(sessionSampler.validateSampleSize(parseInt(e.target.value) || 10))}
+                      className="h-9 w-full rounded-md border border-input bg-background px-3 py-1 text-sm shadow-sm transition-colors focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
+                    />
+                    <p className="text-xs text-muted-foreground">
+                      Select how many questions you want to practice (1-100)
+                    </p>
+                  </div>
+                </div>
+              </div>
+              
+              {/* Question Filtering */}
+              <div className="space-y-4 border-b pb-4">
+                <h4 className="text-sm font-medium">Question Filters (Optional)</h4>
+                <p className="text-xs text-muted-foreground">
+                  Leave unchecked to include all categories and difficulty levels
+                </p>
+                
+                {/* Categories */}
+                <div className="space-y-3">
+                  <label className="text-xs font-medium text-muted-foreground">Categories</label>
+                  <div className="grid grid-cols-2 md:grid-cols-4 gap-2">
+                    {questionCategories.filter(cat => cat.value !== 'all').map(cat => (
+                      <div key={cat.value} className="flex items-center space-x-2">
+                        <Checkbox
+                          id={`cat-${cat.value}`}
+                          checked={tempCategories.includes(cat.value)}
+                          onCheckedChange={() => toggleCategory(cat.value)}
+                        />
+                        <label 
+                          htmlFor={`cat-${cat.value}`} 
+                          className="text-xs cursor-pointer leading-none peer-disabled:cursor-not-allowed peer-disabled:opacity-70"
+                        >
+                          {cat.label}
+                        </label>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+                
+                {/* Difficulty */}
+                <div className="space-y-3">
+                  <label className="text-xs font-medium text-muted-foreground">Difficulty</label>
+                  <div className="flex flex-wrap gap-3">
+                    {difficultyLevels.filter(level => level.value !== 'all').map(level => (
+                      <div key={level.value} className="flex items-center space-x-2">
+                        <Checkbox
+                          id={`diff-${level.value}`}
+                          checked={tempDifficulties.includes(level.value)}
+                          onCheckedChange={() => toggleDifficulty(level.value)}
+                        />
+                        <label 
+                          htmlFor={`diff-${level.value}`} 
+                          className="text-xs cursor-pointer leading-none peer-disabled:cursor-not-allowed peer-disabled:opacity-70"
+                        >
+                          {level.label}
+                        </label>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+                
+                {/* Shuffle */}
+                <div className="space-y-2">
+                  <label className="text-xs font-medium text-muted-foreground">Order</label>
+                  <div className="flex items-center space-x-2">
+                    <Checkbox
+                      id="shuffle"
+                      checked={tempShuffle}
+                      onCheckedChange={(checked) => setTempShuffle(checked as boolean)}
+                    />
+                    <label htmlFor="shuffle" className="text-xs cursor-pointer">
+                      Shuffle questions randomly
+                    </label>
+                  </div>
+                </div>
+              </div>
+              
+              {/* Stage Selection */}
+              <div className="space-y-3">
+                <h4 className="text-sm font-medium">Interview Stages</h4>
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                  {allStages.map((stage, index) => {
+                    const totalQuestions = stage.questions?.length || 0;
+                    
+                    return (
+                      <div key={stage.id} className="flex items-center space-x-3 p-3 border rounded">
+                        <Checkbox
+                          checked={stage.selected}
+                          onCheckedChange={() => handleStageToggle(stage.id)}
+                        />
+                        <div className="flex-1 min-w-0">
+                          <div className="flex items-center gap-2 mb-1">
+                            <Badge variant="outline" className="text-xs">
+                              Stage {index + 1}
+                            </Badge>
+                            <span className="font-medium text-sm truncate">{stage.name}</span>
+                          </div>
+                          <div className="text-xs text-muted-foreground">
+                            {totalQuestions} question{totalQuestions !== 1 ? 's' : ''} available
+                          </div>
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+              </div>
+
+              {/* Begin Session Button */}
+              <div className="pt-4 border-t space-y-3">
+                {/* Filter Summary */}
+                <div className="text-xs text-muted-foreground space-y-1">
+                  <div>
+                    • {allStages.filter(s => s.selected).length} stage{allStages.filter(s => s.selected).length !== 1 ? 's' : ''} selected
+                  </div>
+                  {tempCategories.length > 0 && (
+                    <div>
+                      • Categories: {tempCategories.map(c => questionCategories.find(cat => cat.value === c)?.label).join(', ')}
+                    </div>
+                  )}
+                  {tempDifficulties.length > 0 && (
+                    <div>
+                      • Difficulty: {tempDifficulties.join(', ')}
+                    </div>
+                  )}
+                  {tempCategories.length === 0 && tempDifficulties.length === 0 && (
+                    <div>• All categories and difficulty levels included</div>
+                  )}
+                  {tempShuffle && <div>• Questions will be shuffled</div>}
+                </div>
+                
+                <Button
+                  onClick={handleBeginSession}
+                  size="lg"
+                  className="w-full"
+                  disabled={allStages.filter(s => s.selected).length === 0}
+                >
+                  <Play className="h-4 w-4 mr-2" />
+                  Begin Practice Session ({sampleSize} Questions)
+                </Button>
+                {allStages.filter(s => s.selected).length === 0 && (
+                  <p className="text-xs text-amber-600 text-center mt-2">
+                    Please select at least one interview stage to begin
+                  </p>
+                )}
+              </div>
+            </CardContent>
+          </Card>
+        </div>
+      </div>
+    );
+  }
+
+  // Session Completed State - Show summary and new session button
+  if (sessionState === 'completed') {
+    const totalTime = Array.from(questionTimers.values()).reduce((sum, time) => sum + time, 0);
+    const avgTime = answeredCount > 0 ? Math.floor(totalTime / answeredCount) : 0;
+
+    return (
+      <div className="min-h-screen bg-background">
+        <Navigation />
+        <div className="container mx-auto px-4 py-8 max-w-2xl">
+          <Card className="text-center">
+            <CardHeader>
+              <div className="flex justify-center mb-4">
+                <div className="rounded-full bg-green-100 p-4">
+                  <CheckCircle className="h-12 w-12 text-green-600" />
+                </div>
+              </div>
+              <CardTitle className="text-2xl">Practice Session Complete!</CardTitle>
+              <CardDescription>
+                Great job! You've completed your practice session.
+              </CardDescription>
+            </CardHeader>
+            <CardContent className="space-y-6">
+              {/* Session Statistics */}
+              <div className="grid grid-cols-3 gap-4 py-6">
+                <div className="space-y-1">
+                  <div className="text-3xl font-bold text-primary">{answeredCount}</div>
+                  <div className="text-xs text-muted-foreground">Questions Answered</div>
+                </div>
+                <div className="space-y-1">
+                  <div className="text-3xl font-bold text-primary">{formatTime(totalTime)}</div>
+                  <div className="text-xs text-muted-foreground">Total Time</div>
+                </div>
+                <div className="space-y-1">
+                  <div className="text-3xl font-bold text-primary">{formatTime(avgTime)}</div>
+                  <div className="text-xs text-muted-foreground">Avg. Per Question</div>
+                </div>
+              </div>
+
+              {/* Progress Bar */}
+              <div className="space-y-2">
+                <div className="flex justify-between text-sm">
+                  <span className="text-muted-foreground">Completion</span>
+                  <span className="font-medium">{answeredCount}/{questions.length}</span>
+                </div>
+                <Progress value={(answeredCount / questions.length) * 100} className="h-2" />
+              </div>
+
+              {/* Action Buttons */}
+              <div className="space-y-3 pt-4">
+                <Button
+                  onClick={handleStartNewSession}
+                  size="lg"
+                  className="w-full"
+                >
+                  <Shuffle className="h-4 w-4 mr-2" />
+                  Start New Practice Session
+                </Button>
+                <Button
+                  variant="outline"
+                  onClick={() => navigate(`/dashboard?searchId=${searchId}`)}
+                  className="w-full"
+                >
+                  <ChevronLeft className="h-4 w-4 mr-2" />
+                  Back to Dashboard
+                </Button>
+              </div>
+            </CardContent>
+          </Card>
+        </div>
+      </div>
+    );
+  }
+
+  // Active Practice Session - Show questions
   return (
     <div className="min-h-screen bg-background">
       <Navigation />
@@ -749,13 +1023,6 @@ const Practice = () => {
             </Button>
             
             <div className="flex items-center gap-2">
-              <Button 
-                variant="outline" 
-                size="sm"
-                onClick={() => setShowStageSelector(!showStageSelector)}
-              >
-                <Settings className="h-4 w-4" />
-              </Button>
               <div className="flex items-center gap-1 bg-muted/50 px-2 py-1 rounded-full text-xs">
                 <Timer className="h-3 w-3" />
                 <span className="font-mono">{formatTime(currentQuestionTime)}</span>
@@ -775,113 +1042,6 @@ const Practice = () => {
             </div>
           </div>
         </div>
-
-        {/* Stage Selector Panel */}
-        {showStageSelector && (
-          <Card className="mb-4">
-            <CardHeader className="pb-3">
-              <CardTitle className="text-base flex items-center gap-2">
-                <Settings className="h-4 w-4" />
-                Practice Configuration
-              </CardTitle>
-              <CardDescription>
-                Enhanced question bank with comprehensive metadata and guidance
-              </CardDescription>
-            </CardHeader>
-            <CardContent className="space-y-6">
-              {/* Question Filtering */}
-              {(
-                <div className="space-y-4">
-                  <h4 className="text-sm font-medium">Question Filters</h4>
-                  <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-                    <div className="space-y-2">
-                      <label className="text-xs text-muted-foreground">Categories</label>
-                      <Select 
-                        value={selectedCategories[0] || 'all'} 
-                        onValueChange={(value) => setSelectedCategories([value])}
-                      >
-                        <SelectTrigger className="h-8">
-                          <SelectValue />
-                        </SelectTrigger>
-                        <SelectContent>
-                          {questionCategories.map(cat => (
-                            <SelectItem key={cat.value} value={cat.value}>
-                              {cat.label}
-                            </SelectItem>
-                          ))}
-                        </SelectContent>
-                      </Select>
-                    </div>
-                    
-                    <div className="space-y-2">
-                      <label className="text-xs text-muted-foreground">Difficulty</label>
-                      <Select value={selectedDifficulty} onValueChange={setSelectedDifficulty}>
-                        <SelectTrigger className="h-8">
-                          <SelectValue />
-                        </SelectTrigger>
-                        <SelectContent>
-                          {difficultyLevels.map(level => (
-                            <SelectItem key={level.value} value={level.value}>
-                              {level.label}
-                            </SelectItem>
-                          ))}
-                        </SelectContent>
-                      </Select>
-                    </div>
-                    
-                    <div className="space-y-2">
-                      <label className="text-xs text-muted-foreground">Order</label>
-                      <div className="flex items-center space-x-2">
-                        <Checkbox
-                          id="shuffle"
-                          checked={shuffleQuestions}
-                          onCheckedChange={(checked) => setShuffleQuestions(checked as boolean)}
-                        />
-                        <label htmlFor="shuffle" className="text-xs cursor-pointer">
-                          Shuffle questions
-                        </label>
-                      </div>
-                    </div>
-                  </div>
-                </div>
-              )}
-              
-              {/* Stage Selection */}
-              <div className="space-y-3">
-                <h4 className="text-sm font-medium">Interview Stages</h4>
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-                  {allStages.map((stage, index) => {
-                    const enhancedBank = enhancedQuestionBanks.find(bank => bank.interview_stage === stage.name);
-                    const totalQuestions = enhancedBank?.total_questions || stage.questions?.length || 0;
-                    
-                    return (
-                      <div key={stage.id} className="flex items-center space-x-3 p-3 border rounded">
-                        <Checkbox
-                          checked={stage.selected}
-                          onCheckedChange={() => handleStageToggle(stage.id)}
-                        />
-                        <div className="flex-1 min-w-0">
-                          <div className="flex items-center gap-2 mb-1">
-                            <Badge variant="outline" className="text-xs">
-                              Stage {index + 1}
-                            </Badge>
-                            <span className="font-medium text-sm truncate">{stage.name}</span>
-                          </div>
-                          <div className="text-xs text-muted-foreground">
-                            {totalQuestions} question{totalQuestions !== 1 ? 's' : ''} available
-                            <Badge variant="secondary" className="ml-2 text-xs">
-                              Enhanced
-                            </Badge>
-                          </div>
-                        </div>
-                      </div>
-                    );
-                  })}
-                </div>
-              </div>
-            </CardContent>
-          </Card>
-        )}
 
         {/* Main Question Card - Mobile Optimized */}
         <div className="max-w-2xl mx-auto">

@@ -276,11 +276,11 @@ Per-Search Override:
 ## 📋 MVP Status & Development Backlog
 
 > **Last Updated:** October 25, 2025  
-> **Current MVP Completion:** ~75% (19/30 core features complete)
+> **Current MVP Completion:** ~78% (20/30 core features complete)
 
 ### 🎯 PRD vs Implementation Status
 
-#### ✅ **Implemented Features** (65%)
+#### ✅ **Implemented Features** (70%)
 - Email/password authentication with Supabase
 - Company research with multi-source AI analysis
 - Job description and CV analysis
@@ -288,6 +288,7 @@ Per-Search Override:
 - Interview stages generation (4-6 stages per company)
 - Question generation (120-150 questions per search)
 - **Experience-level adaptation** with smart fallback logic ✨ NEW
+- **Question session sampler** with configurable size (default: 10) ✨ NEW
 - Practice mode with filtering by stage/category/difficulty
 - Voice recording capability
 - Session tracking and answer persistence
@@ -301,9 +302,9 @@ Per-Search Override:
 - **Question Quality**: Has confidence scoring, no user rating
 - **Progress Analytics**: No dashboard (planned)
 
-#### 🔴 **Critical Gaps** (15%)
+#### 🔴 **Critical Gaps** (10%)
 1. ~~**Seniority-Based Personalization**~~ ✅ **COMPLETED** (Epic 1.1)
-2. **Question Session Sampler** - Shows all 100+ questions instead of 10-15
+2. ~~**Question Session Sampler**~~ ✅ **COMPLETED** (Epic 1.2)
 3. **Favorite/Flag Questions** - No favoriting or flagging mechanism
 4. **Swipe/Gesture Interface** - Traditional buttons only, no gestures
 5. **Audio STT (Speech-to-Text)** - Voice records but doesn't transcribe
@@ -345,21 +346,30 @@ Per-Search Override:
 </details>
 
 <details>
-<summary><b>Epic 1.2: Question Session Sampler</b> ⏱️ 4 days</summary>
+<summary><b>✅ Epic 1.2: Question Session Sampler</b> ✅ COMPLETED (Oct 25, 2025)</summary>
 
-**User Story**: As a user, I want practice sessions with 10-15 curated questions (not 100+).
+**User Story**: As a user, I want practice sessions with configurable question counts (not 100+).
 
 **Tasks**:
-- [ ] Create `sessionSampler.ts` with smart selection algorithm
-- [ ] Add `last_practiced_at` to `interview_questions` table
-- [ ] Implement stratified sampling (categories + difficulty)
-- [ ] Prevent recent repeats (last 3 sessions)
-- [ ] Update Practice.tsx to use sampled questions
+- [x] Create `sessionSampler.ts` with smart selection algorithm
+- [x] Implement random sampling respecting current filters
+- [x] Update Practice.tsx to use sampled questions
+- [x] Add configurable sample size input (default: 10)
+- [x] Add "Start New Practice Session" button
+- [x] Add "Show All Questions" toggle
 
-**Files to Create/Change**:
-- `src/services/sessionSampler.ts` - New service
-- `src/pages/Practice.tsx` - Use sampler
-- `supabase/migrations/` - Add timestamp column
+**Implementation Details**:
+- ✅ Simple MVP approach - no over-engineering
+- ✅ Default 10 questions, user can input 1-100
+- ✅ Samples respect user's current stage/category/difficulty filters
+- ✅ Fisher-Yates shuffle for random sampling
+- ✅ "Start New Practice Session" triggers sampling
+- ✅ "Show All Questions" disables sampling
+- ✅ Skipped `last_practiced_at` tracking (not needed for MVP)
+
+**Files Created/Changed**:
+- `src/services/sessionSampler.ts` - New service with random sampling
+- `src/pages/Practice.tsx` - Added session sampler UI and logic
 </details>
 
 <details>
@@ -497,8 +507,8 @@ CREATE TABLE user_question_flags (
 
 | Epic | Priority | Effort | User Impact | Business Value |
 |------|----------|--------|-------------|----------------|
-| **1.1 Seniority Personalization** | 🔴 Critical | Medium | High | High |
-| **1.2 Question Sampler** | 🔴 Critical | Medium | Very High | Very High |
+| ~~**1.1 Seniority Personalization**~~ | ✅ Complete | Medium | High | High |
+| ~~**1.2 Question Sampler**~~ | ✅ Complete | Medium | Very High | Very High |
 | **1.3 Favorite/Flag** | 🔴 Critical | Low | High | Medium |
 | **2.2 Audio STT** | 🟡 High | High | Very High | High |
 | **2.1 Swipe Gestures** | 🟡 High | Low | Medium | Low |
@@ -513,8 +523,8 @@ CREATE TABLE user_question_flags (
 
 #### **Sprint 1** (Week 1-2): Foundation
 - ✅ Epic 1.1: Seniority Personalization (5 days) - **COMPLETED Oct 25, 2024**
-- ⏳ Epic 1.2: Question Sampler (4 days) - **IN PROGRESS**
-- ⏳ Epic 1.3: Favorite/Flag Questions (3 days)
+- ✅ Epic 1.2: Question Sampler (4 days) - **COMPLETED Oct 25, 2024**
+- ⏳ Epic 1.3: Favorite/Flag Questions (3 days) - **NEXT UP**
 
 #### **Sprint 2** (Week 3-4): Enhanced UX
 - ✅ Epic 2.2: Audio STT (5 days)
