@@ -256,6 +256,288 @@ CV: [Upload your resume for personalized insights]
 3. **Understanding the architecture?** See [Technical Design](docs/TECHNICAL_DESIGN.md)
 4. **Daily development?** Use [Development Guide](docs/DEVELOPMENT_GUIDE.md) as your reference
 
+---
+
+## 📋 MVP Status & Development Backlog
+
+> **Last Updated:** January 26, 2025  
+> **Current MVP Completion:** ~70% (18/30 core features complete)
+
+### 🎯 PRD vs Implementation Status
+
+#### ✅ **Implemented Features** (60%)
+- Email/password authentication with Supabase
+- Company research with multi-source AI analysis
+- Job description and CV analysis
+- Interview stages generation (4-6 stages per company)
+- Question generation (120-150 questions per search)
+- Practice mode with filtering by stage/category/difficulty
+- Voice recording capability
+- Session tracking and answer persistence
+- Real-time research progress tracking
+- Search history and result caching
+
+#### ⚠️ **Partially Implemented** (20%)
+- **Session Summary**: Shows answered count, missing summary page
+- **Location Field**: Country exists, not city-level
+- **Timer**: Running timer exists, no presets (30/60/90s)
+- **Question Quality**: Has confidence scoring, no user rating
+- **Progress Analytics**: No dashboard (planned)
+
+#### 🔴 **Critical Gaps** (20%)
+1. **Seniority-Based Personalization** - No seniority field in UI/database
+2. **Question Session Sampler** - Shows all 100+ questions instead of 10-15
+3. **Favorite/Flag Questions** - No favoriting or flagging mechanism
+4. **Swipe/Gesture Interface** - Traditional buttons only, no gestures
+5. **Audio STT (Speech-to-Text)** - Voice records but doesn't transcribe
+6. **AI Answer Feedback** - Not implemented (out of MVP scope per PRD)
+
+---
+
+### 🚀 Development Backlog
+
+#### **PHASE 1: Critical MVP Gaps** (2-3 weeks)
+
+<details>
+<summary><b>Epic 1.1: Seniority-Based Personalization</b> ⏱️ 5 days</summary>
+
+**User Story**: As a user, I want to specify my seniority level so questions match my experience level.
+
+**Tasks**:
+- [ ] Add `seniority` enum to `profiles` table (`junior`, `mid`, `senior`)
+- [ ] Add `target_seniority` to `searches` table
+- [ ] Add seniority selector to Profile page
+- [ ] Add seniority field to Home search form
+- [ ] Update question generator to adapt difficulty by seniority
+- [ ] Create and test database migration
+
+**Files to Change**:
+- `supabase/migrations/` - New migration
+- `src/pages/Profile.tsx` - Add seniority selector
+- `src/pages/Home.tsx` - Add seniority field
+- `supabase/functions/interview-question-generator/index.ts` - Difficulty adaptation
+</details>
+
+<details>
+<summary><b>Epic 1.2: Question Session Sampler</b> ⏱️ 4 days</summary>
+
+**User Story**: As a user, I want practice sessions with 10-15 curated questions (not 100+).
+
+**Tasks**:
+- [ ] Create `sessionSampler.ts` with smart selection algorithm
+- [ ] Add `last_practiced_at` to `interview_questions` table
+- [ ] Implement stratified sampling (categories + difficulty)
+- [ ] Prevent recent repeats (last 3 sessions)
+- [ ] Update Practice.tsx to use sampled questions
+
+**Files to Create/Change**:
+- `src/services/sessionSampler.ts` - New service
+- `src/pages/Practice.tsx` - Use sampler
+- `supabase/migrations/` - Add timestamp column
+</details>
+
+<details>
+<summary><b>Epic 1.3: Favorite & Flag Questions</b> ⏱️ 3 days</summary>
+
+**User Story**: As a user, I want to favorite important questions and flag difficult ones.
+
+**Tasks**:
+- [ ] Create `user_question_flags` table (favorite/needs_work/skipped)
+- [ ] Add `flagQuestion()` and `getFlaggedQuestions()` to service
+- [ ] Add favorite/flag buttons to question cards
+- [ ] Add "Favorites" filter to practice mode
+- [ ] Update sampler to include % of favorites
+
+**Database Schema**:
+```sql
+CREATE TABLE user_question_flags (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  user_id UUID REFERENCES auth.users(id) ON DELETE CASCADE,
+  question_id UUID REFERENCES interview_questions(id) ON DELETE CASCADE,
+  flag_type TEXT CHECK (flag_type IN ('favorite', 'needs_work', 'skipped')),
+  created_at TIMESTAMP WITH TIME ZONE DEFAULT now()
+);
+```
+</details>
+
+---
+
+#### **PHASE 2: Enhanced UX** (2 weeks)
+
+<details>
+<summary><b>Epic 2.1: Swipe Gesture Interface</b> ⏱️ 3 days</summary>
+
+**Tasks**:
+- [ ] Install `react-swipeable` or `framer-motion`
+- [ ] Implement swipe handlers (left=skip, right=favorite, up=guidance)
+- [ ] Add visual swipe indicators
+- [ ] Test on iOS/Android mobile devices
+
+**Files to Change**:
+- `src/pages/Practice.tsx` - Add swipe logic
+- `package.json` - Add swipe library
+</details>
+
+<details>
+<summary><b>Epic 2.2: Audio Transcription (STT)</b> ⏱️ 5 days</summary>
+
+**User Story**: As a user, I want my voice answers transcribed automatically.
+
+**Tasks**:
+- [ ] Choose STT provider (OpenAI Whisper vs Browser Web Speech API)
+- [ ] Create `transcribeAudio` Edge Function (if Whisper)
+- [ ] Update `savePracticeAnswer` to transcribe audio
+- [ ] Display transcript after recording
+- [ ] Ensure P95 latency ≤ 6s (per PRD)
+
+**Provider Comparison**:
+- **OpenAI Whisper**: $0.006/min, high accuracy, requires API
+- **Web Speech API**: Free, browser-native, lower accuracy
+
+**Files to Change**:
+- `supabase/functions/transcribe-audio/` - New function
+- `src/services/searchService.ts` - Add transcription
+- `src/pages/Practice.tsx` - Display transcript
+</details>
+
+<details>
+<summary><b>Epic 2.3: Timer Presets</b> ⏱️ 2 days</summary>
+
+**Tasks**:
+- [ ] Add timer preset buttons (30/60/90s)
+- [ ] Implement countdown timer (vs count-up)
+- [ ] Add visual/audio alert on expiry
+- [ ] Save user's preferred preset to profile
+
+**Files to Change**:
+- `src/pages/Practice.tsx` - Timer controls
+- `src/pages/Profile.tsx` - Save preference
+</details>
+
+<details>
+<summary><b>Epic 2.4: Session Summary & Completion</b> ⏱️ 3 days</summary>
+
+**Tasks**:
+- [ ] Create `SessionSummary` component
+- [ ] Display answered/skipped/favorited breakdown
+- [ ] Add session notes field
+- [ ] Mark session as completed in DB
+
+**Files to Create/Change**:
+- `src/components/SessionSummary.tsx` - New component
+- `src/pages/Practice.tsx` - Show on completion
+- Database: Add `session_notes` to `practice_sessions`
+</details>
+
+---
+
+#### **PHASE 3: Performance & Polish** (1 week)
+
+<details>
+<summary><b>Epic 3.1: Progress Analytics Dashboard</b> ⏱️ 4 days</summary>
+
+**Tasks**:
+- [ ] Create Analytics section in Profile/Dashboard
+- [ ] Add `getPracticeAnalytics(userId, days)` method
+- [ ] Display charts (questions/day, completion rate, categories)
+- [ ] Use `recharts` library (already installed)
+
+**Metrics to Track**:
+- Questions answered per day (last 30 days)
+- Session completion rate
+- Category breakdown (behavioral vs technical)
+- Favorite question count
+</details>
+
+<details>
+<summary><b>Epic 3.2: Performance Optimization</b> ⏱️ 3 days</summary>
+
+**Tasks**:
+- [ ] Add performance monitoring (measure P95 latency)
+- [ ] Lazy load Practice page components
+- [ ] Implement question pagination (vs loading 100+)
+- [ ] Optimize `getSearchResults` query
+- [ ] Add service worker for offline support
+
+**Performance Targets** (from PRD):
+- App shell load: < 2s on 5G
+- API response P95: < 500ms
+- Research first set: 60-90s (currently 2-5 mins)
+</details>
+
+---
+
+### 📊 Priority Matrix
+
+| Epic | Priority | Effort | User Impact | Business Value |
+|------|----------|--------|-------------|----------------|
+| **1.1 Seniority Personalization** | 🔴 Critical | Medium | High | High |
+| **1.2 Question Sampler** | 🔴 Critical | Medium | Very High | Very High |
+| **1.3 Favorite/Flag** | 🔴 Critical | Low | High | Medium |
+| **2.2 Audio STT** | 🟡 High | High | Very High | High |
+| **2.1 Swipe Gestures** | 🟡 High | Low | Medium | Low |
+| **2.4 Session Summary** | 🟡 High | Low | Medium | Medium |
+| **2.3 Timer Presets** | 🟢 Medium | Low | Low | Low |
+| **3.1 Analytics Dashboard** | 🟢 Medium | Medium | Medium | Medium |
+| **3.2 Performance** | 🟡 High | Medium | High | High |
+
+---
+
+### 🎯 Recommended Sprint Plan
+
+#### **Sprint 1** (Week 1-2): Foundation
+- ✅ Epic 1.1: Seniority Personalization (5 days)
+- ✅ Epic 1.2: Question Sampler (4 days)
+- ✅ Epic 1.3: Favorite/Flag Questions (3 days)
+
+#### **Sprint 2** (Week 3-4): Enhanced UX
+- ✅ Epic 2.2: Audio STT (5 days)
+- ✅ Epic 2.1: Swipe Gestures (3 days)
+- ✅ Epic 2.4: Session Summary (3 days)
+
+#### **Sprint 3** (Week 5): Polish
+- ✅ Epic 2.3: Timer Presets (2 days)
+- ✅ Epic 3.1: Progress Analytics (4 days)
+
+**Total Estimated Time**: 5-6 weeks (1 developer)
+
+---
+
+### 📈 Success Metrics (Post-Implementation)
+
+After completing the backlog, track these metrics to validate success:
+
+- **User Engagement**: ≥20% of sign-ups complete 1+ practice sessions
+- **Session Quality**: Average 10-15 questions per session (vs current 100+)
+- **Audio Adoption**: ≥30% of answers use voice recording
+- **Favoriting**: ≥40% of users favorite at least 5 questions
+- **Performance**: Research completion time ≤ 90 seconds (P95)
+- **STT Latency**: Transcription time ≤ 6 seconds (P95)
+
+---
+
+### 🛠️ Contributing to the Backlog
+
+**Before Starting Work**:
+1. Check this backlog for assigned epics
+2. Read the full PRD in `docs/PRODUCT_DESIGN.md`
+3. Review technical design in `docs/TECHNICAL_DESIGN.md`
+4. Create a feature branch: `git checkout -b feature/epic-X.Y-description`
+
+**During Development**:
+1. Update task checkboxes as you complete them
+2. Document any deviations from the plan
+3. Write tests for new functionality
+4. Update relevant documentation
+
+**After Completion**:
+1. Mark epic as ✅ complete with date
+2. Update this README with new features
+3. Update `docs/IMPLEMENTATION_CHANGES.md`
+4. Submit PR for review
+
+---
+
 ## 🎨 Design System
 
 The app uses a custom design system based on fresh green colors:
