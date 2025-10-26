@@ -26,7 +26,10 @@ import {
   MicOff,
   Square,
   Filter,
-  Shuffle
+  Shuffle,
+  Star,
+  Flag,
+  X
 } from "lucide-react";
 import { searchService } from "@/services/searchService";
 import { sessionSampler } from "@/services/sessionSampler";
@@ -110,6 +113,10 @@ const Practice = () => {
   const [practiceSession, setPracticeSession] = useState<PracticeSession | null>(null);
   const [savedAnswers, setSavedAnswers] = useState<Map<string, boolean>>(new Map());
   
+  // Question flags (Epic 1.3)
+  const [questionFlags, setQuestionFlags] = useState<Record<string, { flag_type: string; id: string }>>({});
+  const [showFavoritesOnly, setShowFavoritesOnly] = useState(false);
+  
   // Enhanced question filtering - applied filters (used during session)
   const [appliedCategories, setAppliedCategories] = useState<string[]>([]);
   const [appliedDifficulties, setAppliedDifficulties] = useState<string[]>([]);
@@ -123,6 +130,7 @@ const Practice = () => {
   // Session sampling
   const [sampleSize, setSampleSize] = useState<number>(10);
   const [useSampling, setUseSampling] = useState<boolean>(false);
+  const [tempShowFavoritesOnly, setTempShowFavoritesOnly] = useState(false);
   
   // Session state: 'setup' | 'inProgress' | 'completed'
   const [sessionState, setSessionState] = useState<'setup' | 'inProgress' | 'completed'>('setup');
@@ -212,6 +220,32 @@ const Practice = () => {
     loadSearchData();
   }, [searchId]);
 
+  // Load question flags when stages are loaded (separate effect to avoid infinite loop)
+  useEffect(() => {
+    const loadFlags = async () => {
+      const selectedStages = allStages.filter(stage => stage.selected);
+      if (selectedStages.length === 0) return;
+
+      const allQuestionIds: string[] = [];
+      selectedStages.forEach(stage => {
+        stage.questions?.forEach(questionObj => {
+          allQuestionIds.push(questionObj.id);
+        });
+      });
+
+      if (allQuestionIds.length > 0) {
+        const flagsResult = await searchService.getQuestionFlags(allQuestionIds);
+        if (flagsResult.success && flagsResult.flags) {
+          setQuestionFlags(flagsResult.flags);
+        }
+      }
+    };
+
+    if (allStages.length > 0) {
+      loadFlags();
+    }
+  }, [allStages]); // Only reload flags when stages change
+
   // Load practice session when stages are selected
   useEffect(() => {
     const loadPracticeSession = async () => {
@@ -270,6 +304,13 @@ const Practice = () => {
           );
         }
         
+        // Filter by favorites only (Epic 1.3) - uses questionFlags from separate effect
+        if (showFavoritesOnly) {
+          filteredQuestions = filteredQuestions.filter(q => 
+            questionFlags[q.id]?.flag_type === 'favorite'
+          );
+        }
+        
         // Sort questions by stage order for consistent experience
         const sortedQuestions = filteredQuestions.sort((a, b) => {
           const stageA = selectedStages.find(s => s.id === a.stage_id);
@@ -308,7 +349,7 @@ const Practice = () => {
     if (allStages.length > 0) {
       loadPracticeSession();
     }
-  }, [allStages, appliedCategories, appliedDifficulties, appliedShuffle, searchId, useSampling, sampleSize]);
+  }, [allStages, appliedCategories, appliedDifficulties, appliedShuffle, searchId, useSampling, sampleSize, showFavoritesOnly]);
 
   // Reset timer when question changes
   useEffect(() => {
@@ -422,6 +463,7 @@ const Practice = () => {
     setAppliedCategories(tempCategories);
     setAppliedDifficulties(tempDifficulties);
     setAppliedShuffle(tempShuffle);
+    setShowFavoritesOnly(tempShowFavoritesOnly);
     
     setUseSampling(true);
     setSessionState('inProgress');
@@ -440,9 +482,11 @@ const Practice = () => {
     setAppliedCategories([]);
     setAppliedDifficulties([]);
     setAppliedShuffle(false);
+    setShowFavoritesOnly(false);
     setTempCategories([]);
     setTempDifficulties([]);
     setTempShuffle(false);
+    setTempShowFavoritesOnly(false);
   };
   
   const toggleCategory = (category: string) => {
@@ -459,6 +503,40 @@ const Practice = () => {
         ? prev.filter(d => d !== difficulty)
         : [...prev, difficulty]
     );
+  };
+
+  // Flag handling functions (Epic 1.3)
+  const handleToggleFlag = async (questionId: string, flagType: 'favorite' | 'needs_work' | 'skipped') => {
+    try {
+      const currentFlag = questionFlags[questionId];
+      
+      // If same flag type, remove it (toggle off)
+      if (currentFlag && currentFlag.flag_type === flagType) {
+        const result = await searchService.removeQuestionFlag(questionId);
+        if (result.success) {
+          setQuestionFlags(prev => {
+            const newFlags = { ...prev };
+            delete newFlags[questionId];
+            return newFlags;
+          });
+        } else {
+          console.error('Failed to remove flag:', result.error);
+        }
+      } else {
+        // Set new flag (or update existing one)
+        const result = await searchService.setQuestionFlag(questionId, flagType);
+        if (result.success && result.flag) {
+          setQuestionFlags(prev => ({
+            ...prev,
+            [questionId]: { flag_type: flagType, id: result.flag.id }
+          }));
+        } else {
+          console.error('Failed to set flag:', result.error);
+        }
+      }
+    } catch (error) {
+      console.error('Error toggling flag:', error);
+    }
   };
 
   const handleSaveAnswer = async () => {
@@ -859,6 +937,22 @@ const Practice = () => {
                     </label>
                   </div>
                 </div>
+                
+                {/* Favorites Filter (Epic 1.3) */}
+                <div className="space-y-2">
+                  <label className="text-xs font-medium text-muted-foreground">Favorites</label>
+                  <div className="flex items-center space-x-2">
+                    <Checkbox
+                      id="favorites-only"
+                      checked={tempShowFavoritesOnly}
+                      onCheckedChange={(checked) => setTempShowFavoritesOnly(checked as boolean)}
+                    />
+                    <label htmlFor="favorites-only" className="text-xs cursor-pointer flex items-center gap-1">
+                      <Star className="h-3 w-3 text-amber-500" />
+                      Show only favorited questions
+                    </label>
+                  </div>
+                </div>
               </div>
               
               {/* Stage Selection */}
@@ -912,6 +1006,7 @@ const Practice = () => {
                     <div>• All categories and difficulty levels included</div>
                   )}
                   {tempShuffle && <div>• Questions will be shuffled</div>}
+                  {tempShowFavoritesOnly && <div>• <Star className="h-3 w-3 inline text-amber-500" /> Showing favorites only</div>}
                 </div>
                 
                 <Button
@@ -1082,6 +1177,54 @@ const Practice = () => {
               <CardTitle className="text-lg sm:text-xl leading-relaxed mb-4">
                 {currentQuestion.question}
               </CardTitle>
+              
+              {/* Flag Buttons (Epic 1.3) */}
+              <div className="flex items-center gap-2 mb-2">
+                <span className="text-xs text-muted-foreground mr-1">Quick actions:</span>
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  onClick={() => handleToggleFlag(currentQuestion.id, 'favorite')}
+                  className={`h-7 px-2 ${
+                    questionFlags[currentQuestion.id]?.flag_type === 'favorite'
+                      ? 'bg-amber-100 text-amber-700 hover:bg-amber-200'
+                      : 'text-muted-foreground hover:text-amber-600'
+                  }`}
+                >
+                  <Star className={`h-3.5 w-3.5 mr-1 ${
+                    questionFlags[currentQuestion.id]?.flag_type === 'favorite' ? 'fill-current' : ''
+                  }`} />
+                  <span className="text-xs">Favorite</span>
+                </Button>
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  onClick={() => handleToggleFlag(currentQuestion.id, 'needs_work')}
+                  className={`h-7 px-2 ${
+                    questionFlags[currentQuestion.id]?.flag_type === 'needs_work'
+                      ? 'bg-red-100 text-red-700 hover:bg-red-200'
+                      : 'text-muted-foreground hover:text-red-600'
+                  }`}
+                >
+                  <Flag className={`h-3.5 w-3.5 mr-1 ${
+                    questionFlags[currentQuestion.id]?.flag_type === 'needs_work' ? 'fill-current' : ''
+                  }`} />
+                  <span className="text-xs">Needs Work</span>
+                </Button>
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  onClick={() => handleToggleFlag(currentQuestion.id, 'skipped')}
+                  className={`h-7 px-2 ${
+                    questionFlags[currentQuestion.id]?.flag_type === 'skipped'
+                      ? 'bg-gray-100 text-gray-700 hover:bg-gray-200'
+                      : 'text-muted-foreground hover:text-gray-600'
+                  }`}
+                >
+                  <X className={`h-3.5 w-3.5 mr-1`} />
+                  <span className="text-xs">Skip</span>
+                </Button>
+              </div>
               
               {/* Enhanced Question Information */}
               {(currentQuestion.rationale || currentQuestion.company_context) && (

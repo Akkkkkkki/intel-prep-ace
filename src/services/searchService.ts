@@ -379,4 +379,91 @@ export const searchService = {
       return { error, success: false };
     }
   },
+
+  // Question Flag Methods (Epic 1.3)
+  async setQuestionFlag(questionId: string, flagType: 'favorite' | 'needs_work' | 'skipped') {
+    try {
+      const { data: { user }, error: userError } = await supabase.auth.getUser();
+      
+      if (userError || !user) {
+        throw new Error("No authenticated user");
+      }
+
+      // Upsert flag (insert or update if exists)
+      const { data, error } = await supabase
+        .from("user_question_flags")
+        .upsert({
+          user_id: user.id,
+          question_id: questionId,
+          flag_type: flagType,
+          updated_at: new Date().toISOString(),
+        }, {
+          onConflict: 'user_id,question_id'
+        })
+        .select()
+        .single();
+
+      if (error) throw error;
+
+      return { flag: data, success: true };
+    } catch (error) {
+      console.error("Error setting question flag:", error);
+      return { error, success: false };
+    }
+  },
+
+  async removeQuestionFlag(questionId: string) {
+    try {
+      const { data: { user }, error: userError } = await supabase.auth.getUser();
+      
+      if (userError || !user) {
+        throw new Error("No authenticated user");
+      }
+
+      const { error } = await supabase
+        .from("user_question_flags")
+        .delete()
+        .eq("user_id", user.id)
+        .eq("question_id", questionId);
+
+      if (error) throw error;
+
+      return { success: true };
+    } catch (error) {
+      console.error("Error removing question flag:", error);
+      return { error, success: false };
+    }
+  },
+
+  async getQuestionFlags(questionIds: string[]) {
+    try {
+      const { data: { user }, error: userError } = await supabase.auth.getUser();
+      
+      if (userError || !user) {
+        throw new Error("No authenticated user");
+      }
+
+      const { data, error } = await supabase
+        .from("user_question_flags")
+        .select("*")
+        .eq("user_id", user.id)
+        .in("question_id", questionIds);
+
+      if (error) throw error;
+
+      // Convert to map for easy lookup
+      const flagsMap: Record<string, { flag_type: string; id: string }> = {};
+      (data || []).forEach(flag => {
+        flagsMap[flag.question_id] = {
+          flag_type: flag.flag_type,
+          id: flag.id
+        };
+      });
+
+      return { flags: flagsMap, success: true };
+    } catch (error) {
+      console.error("Error getting question flags:", error);
+      return { error, success: false };
+    }
+  },
 };
